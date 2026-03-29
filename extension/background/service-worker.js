@@ -99,6 +99,18 @@ async function handleSearchAnalysis(keyword) {
     api.productResearch(keyword),
   ]);
 
+  // 生データをログ出力（SW DevToolsで確認）
+  if (keywordData.status === 'fulfilled') {
+    console.log('[EC Lens SW] keywordMiner raw:', JSON.stringify(keywordData.value).slice(0, 500));
+  } else {
+    console.error('[EC Lens SW] keywordMiner error:', keywordData.reason.message);
+  }
+  if (productData.status === 'fulfilled') {
+    console.log('[EC Lens SW] productResearch raw:', JSON.stringify(productData.value).slice(0, 500));
+  } else {
+    console.error('[EC Lens SW] productResearch error:', productData.reason.message);
+  }
+
   const result = {
     keyword,
     keywordData: keywordData.status === 'fulfilled' ? keywordData.value : null,

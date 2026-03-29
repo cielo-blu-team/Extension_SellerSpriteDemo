@@ -44,13 +44,17 @@
             try {
               data = JSON.parse(text);
             } catch (_) {
-              throw new Error(`API\u30EC\u30B9\u30DD\u30F3\u30B9\u306E\u30D1\u30FC\u30B9\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08${response.status}\uFF09: ${text.slice(0, 100)}`);
+              throw new Error(`API\u30EC\u30B9\u30DD\u30F3\u30B9\u306E\u30D1\u30FC\u30B9\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08${response.status}\uFF09: ${text.slice(0, 200)}`);
             }
+            console.log(`[EC Lens API] ${method} ${path}`, {
+              status: response.status,
+              code: data.code,
+              message: data.message,
+              keys: data.data ? Object.keys(data.data) : Object.keys(data)
+            });
             const code = data.code;
             const message = data.message || data.msg || "";
-            const isSuccess = code === 1 || code === "1" || // 正常: code=1
-            message === "\u6210\u529F" || // 正常: message="成功"
-            code === void 0 && response.ok;
+            const isSuccess = code === 1 || code === "1" || message === "\u6210\u529F" || code === void 0 && response.ok;
             if (!isSuccess) {
               throw new SellerSpriteError(
                 code,
@@ -381,6 +385,16 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
           api.keywordMiner(keyword),
           api.productResearch(keyword)
         ]);
+        if (keywordData.status === "fulfilled") {
+          console.log("[EC Lens SW] keywordMiner raw:", JSON.stringify(keywordData.value).slice(0, 500));
+        } else {
+          console.error("[EC Lens SW] keywordMiner error:", keywordData.reason.message);
+        }
+        if (productData.status === "fulfilled") {
+          console.log("[EC Lens SW] productResearch raw:", JSON.stringify(productData.value).slice(0, 500));
+        } else {
+          console.error("[EC Lens SW] productResearch error:", productData.reason.message);
+        }
         const result = {
           keyword,
           keywordData: keywordData.status === "fulfilled" ? keywordData.value : null,

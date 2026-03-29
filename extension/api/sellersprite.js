@@ -38,23 +38,29 @@ export class SellerSpriteAPI {
 
       const response = await fetch(url, options);
 
-      // レスポンステキストを先に取得してデバッグしやすくする
       const text = await response.text();
       let data;
       try {
         data = JSON.parse(text);
       } catch (_) {
-        throw new Error(`APIレスポンスのパースに失敗しました（${response.status}）: ${text.slice(0, 100)}`);
+        throw new Error(`APIレスポンスのパースに失敗しました（${response.status}）: ${text.slice(0, 200)}`);
       }
 
+      // 生レスポンスをログ出力（DevToolsのService Workerコンソールで確認可能）
+      console.log(`[EC Lens API] ${method} ${path}`, {
+        status: response.status,
+        code: data.code,
+        message: data.message,
+        keys: data.data ? Object.keys(data.data) : Object.keys(data),
+      });
+
       // SellerSprite API: code=1 または message="成功" が成功
-      // エラー時は code=0 やエラー文字列を返す
       const code = data.code;
       const message = data.message || data.msg || '';
       const isSuccess =
-        code === 1 || code === '1' ||       // 正常: code=1
-        message === '成功' ||               // 正常: message="成功"
-        (code === undefined && response.ok); // フォールバック
+        code === 1 || code === '1' ||
+        message === '成功' ||
+        (code === undefined && response.ok);
 
       if (!isSuccess) {
         throw new SellerSpriteError(
@@ -63,7 +69,6 @@ export class SellerSpriteAPI {
         );
       }
 
-      // data.data が存在すればそれを返す、なければ data 全体を返す
       return data.data !== undefined ? data.data : data;
     } catch (err) {
       if (err.name === 'AbortError') {
