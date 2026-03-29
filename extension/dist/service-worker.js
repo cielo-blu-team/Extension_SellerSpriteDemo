@@ -47,11 +47,14 @@
               throw new Error(`API\u30EC\u30B9\u30DD\u30F3\u30B9\u306E\u30D1\u30FC\u30B9\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08${response.status}\uFF09: ${text.slice(0, 100)}`);
             }
             const code = data.code;
-            const isSuccess = code === 0 || code === "0" || code === void 0 && response.ok;
+            const message = data.message || data.msg || "";
+            const isSuccess = code === 1 || code === "1" || // 正常: code=1
+            message === "\u6210\u529F" || // 正常: message="成功"
+            code === void 0 && response.ok;
             if (!isSuccess) {
               throw new SellerSpriteError(
                 code,
-                data.message || data.msg || data.error || `API\u30A8\u30E9\u30FC\uFF08\u30B3\u30FC\u30C9: ${code}, HTTP: ${response.status}\uFF09`
+                message || data.error || `API\u30A8\u30E9\u30FC\uFF08\u30B3\u30FC\u30C9: ${code}, HTTP: ${response.status}\uFF09`
               );
             }
             return data.data !== void 0 ? data.data : data;

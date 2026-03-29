@@ -47,14 +47,19 @@ export class SellerSpriteAPI {
         throw new Error(`APIレスポンスのパースに失敗しました（${response.status}）: ${text.slice(0, 100)}`);
       }
 
-      // SellerSprite API: code=0 が成功、それ以外はエラー
-      // code が存在しない場合は response.ok で判断
+      // SellerSprite API: code=1 または message="成功" が成功
+      // エラー時は code=0 やエラー文字列を返す
       const code = data.code;
-      const isSuccess = code === 0 || code === '0' || (code === undefined && response.ok);
+      const message = data.message || data.msg || '';
+      const isSuccess =
+        code === 1 || code === '1' ||       // 正常: code=1
+        message === '成功' ||               // 正常: message="成功"
+        (code === undefined && response.ok); // フォールバック
+
       if (!isSuccess) {
         throw new SellerSpriteError(
           code,
-          data.message || data.msg || data.error || `APIエラー（コード: ${code}, HTTP: ${response.status}）`
+          message || data.error || `APIエラー（コード: ${code}, HTTP: ${response.status}）`
         );
       }
 
