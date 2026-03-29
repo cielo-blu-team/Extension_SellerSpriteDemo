@@ -50,6 +50,10 @@ async function handleMessage(message, sender) {
     case 'CLEAR_CACHE':
       return clearCache();
 
+    case 'OPEN_OPTIONS':
+      chrome.runtime.openOptionsPage();
+      return { success: true };
+
     default:
       throw new Error(`不明なメッセージタイプ: ${type}`);
   }

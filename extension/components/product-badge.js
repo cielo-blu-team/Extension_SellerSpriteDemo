@@ -71,12 +71,15 @@ export function applyBadgeToCard(cardEl, productData) {
   const existing = cardEl.querySelector('.ec-lens-badge');
   if (existing) existing.remove();
 
-  // 画像コンテナを探す（Amazonのカード構造に合わせる）
+  // 画像コンテナを探す（フォールバック付き）
   const imgWrapper =
     cardEl.querySelector('.s-image-square-aspect') ||
     cardEl.querySelector('.s-image-overlay-grey') ||
     cardEl.querySelector('[data-component-type="s-product-image"]') ||
-    cardEl.querySelector('.s-product-image-container');
+    cardEl.querySelector('.s-product-image-container') ||
+    cardEl.querySelector('.a-section.aok-relative') ||
+    cardEl.querySelector('img.s-image')?.closest('a') ||
+    cardEl.querySelector('img.s-image')?.parentElement;
 
   if (!imgWrapper) return;
 

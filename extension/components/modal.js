@@ -10,6 +10,7 @@ export class Modal {
     this.data = null;
     this.asin = null;
     this.reviewHandler = null;
+    this._charts = {}; // Chart.jsインスタンス管理
   }
 
   render(asin) {
@@ -237,18 +238,21 @@ export class Modal {
           margin: 8px 0;
           font-size: 12px;
         }
-        /* チャートプレースホルダー */
-        .ec-lens-chart-area {
-          height: 200px;
-          background: #F5F5F5;
+        /* チャートエリア */
+        .ec-lens-chart-wrap {
+          position: relative;
+          height: 220px;
+          margin-bottom: 14px;
+          background: #FAFAFA;
           border: 1px solid #E0E0E0;
           border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #999;
-          font-size: 12px;
-          margin-bottom: 12px;
+          padding: 10px;
+        }
+        .ec-lens-chart-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: #444;
+          margin-bottom: 6px;
         }
       </style>
       <div id="ec-lens-modal">
@@ -294,6 +298,10 @@ export class Modal {
   }
 
   _switchTab(tab) {
+    // 既存チャートを破棄
+    Object.values(this._charts).forEach(c => { try { c.destroy(); } catch (_) {} });
+    this._charts = {};
+
     this.activeTab = tab;
     this.el.querySelectorAll('.ec-lens-tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -322,12 +330,14 @@ export class Modal {
         break;
       case 'sales':
         body.innerHTML = this._renderSales();
+        this._drawSalesCharts();
         break;
       case 'keywords':
         body.innerHTML = this._renderKeywords();
         break;
       case 'trends':
         body.innerHTML = this._renderTrends();
+        this._drawTrendsChart();
         break;
       case 'reviews':
         body.innerHTML = this._renderReviews();
@@ -400,9 +410,8 @@ export class Modal {
     }
     if (!sp) return `<div class="ec-lens-tab-error">データがありません</div>`;
 
-    // 月別テーブル
-    const monthly = sp.monthItemList || [];
-    const rows = monthly.slice(-6).map(item => `
+    const monthly = (sp.monthItemList || []).slice(-6);
+    const rows = monthly.map(item => `
       <tr>
         <td>${item.date || '---'}</td>
         <td>${Number(item.sales || 0).toLocaleString()}個</td>
@@ -411,16 +420,86 @@ export class Modal {
     `).join('');
 
     return `
-      <div class="ec-lens-chart-area">
-        グラフ表示エリア（月別販売数 直近6ヶ月）
+      <div class="ec-lens-chart-title">月別販売数（直近6ヶ月）</div>
+      <div class="ec-lens-chart-wrap">
+        <canvas id="ec-lens-chart-monthly"></canvas>
       </div>
-      <table class="ec-lens-table">
-        <thead>
-          <tr><th>月</th><th>販売数</th><th>売上</th></tr>
-        </thead>
+      <div class="ec-lens-chart-title" style="margin-top:8px">日別販売数（直近30日）</div>
+      <div class="ec-lens-chart-wrap">
+        <canvas id="ec-lens-chart-daily"></canvas>
+      </div>
+      <table class="ec-lens-table" style="margin-top:12px">
+        <thead><tr><th>月</th><th>販売数</th><th>売上</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="3" style="text-align:center;color:#999">データなし</td></tr>'}</tbody>
       </table>
     `;
+  }
+
+  _drawSalesCharts() {
+    if (!window.Chart) {
+      this._loadChartJs(() => this._drawSalesCharts());
+      return;
+    }
+    const sp = this.data.salesPrediction;
+    if (!sp) return;
+
+    // 月別グラフ
+    const monthly = (sp.monthItemList || []).slice(-6);
+    const monthCanvas = this.el.querySelector('#ec-lens-chart-monthly');
+    if (monthCanvas && monthly.length) {
+      this._charts.monthly = new window.Chart(monthCanvas, {
+        type: 'bar',
+        data: {
+          labels: monthly.map(i => i.date || ''),
+          datasets: [
+            {
+              label: '販売数（個）',
+              data: monthly.map(i => i.sales || 0),
+              backgroundColor: 'rgba(21, 96, 189, 0.75)',
+              borderColor: '#1560BD',
+              borderWidth: 1,
+              yAxisID: 'y',
+            },
+            {
+              label: '売上（円）',
+              data: monthly.map(i => i.amount || 0),
+              type: 'line',
+              borderColor: '#E65100',
+              backgroundColor: 'rgba(230, 81, 0, 0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: 'y2',
+            },
+          ],
+        },
+        options: chartOptions('月', '販売数', '売上'),
+      });
+    }
+
+    // 日別グラフ
+    const daily = (sp.dailyItemList || []).slice(-30);
+    const dailyCanvas = this.el.querySelector('#ec-lens-chart-daily');
+    if (dailyCanvas && daily.length) {
+      this._charts.daily = new window.Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: daily.map(i => i.date || ''),
+          datasets: [
+            {
+              label: '日別販売数（個）',
+              data: daily.map(i => i.sales || 0),
+              borderColor: '#1560BD',
+              backgroundColor: 'rgba(21, 96, 189, 0.08)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 2,
+            },
+          ],
+        },
+        options: chartOptions('日', '販売数', null),
+      });
+    }
   }
 
   _renderKeywords() {
@@ -476,10 +555,57 @@ export class Modal {
           <span style="font-size:17px;font-weight:700;color:#1A237E;margin-left:10px">${Number(bsrValue).toLocaleString()}個</span>
         </div>
       ` : ''}
-      <div class="ec-lens-chart-area">
-        グラフ表示エリア（Googleトレンド 直近12ヶ月）
+      <div class="ec-lens-chart-title">Googleトレンド（直近12ヶ月）</div>
+      <div class="ec-lens-chart-wrap">
+        <canvas id="ec-lens-chart-trends"></canvas>
       </div>
+      ${(!trends && !this.data.googleTrendsError) ? '<p style="font-size:11px;color:#999;text-align:center">Googleトレンドデータがありません</p>' : ''}
     `;
+  }
+
+  _drawTrendsChart() {
+    if (!window.Chart) {
+      this._loadChartJs(() => this._drawTrendsChart());
+      return;
+    }
+    const trends = this.data.googleTrends;
+    if (!trends?.items?.length) return;
+
+    const items = trends.items.slice(-12);
+    const canvas = this.el.querySelector('#ec-lens-chart-trends');
+    if (!canvas) return;
+
+    this._charts.trends = new window.Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: items.map(i => i.date || i.month || ''),
+        datasets: [
+          {
+            label: '検索トレンド',
+            data: items.map(i => i.value || i.index || 0),
+            borderColor: '#2E7D32',
+            backgroundColor: 'rgba(46, 125, 50, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+          },
+        ],
+      },
+      options: chartOptions('月', 'トレンド指数', null),
+    });
+  }
+
+  _loadChartJs(callback) {
+    if (document.getElementById('ec-lens-chartjs')) {
+      // スクリプトはあるがwindow.Chartがまだない→少し待つ
+      setTimeout(() => { if (window.Chart) callback(); }, 200);
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'ec-lens-chartjs';
+    script.src = chrome.runtime.getURL('assets/chart.umd.js');
+    script.onload = callback;
+    document.head.appendChild(script);
   }
 
   _renderReviews() {
@@ -632,4 +758,58 @@ function formatDateAndAge(dateStr) {
   const months = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
   const years = (months / 12).toFixed(1);
   return `${dateStr}（約${years}年）`;
+}
+
+// Chart.js 共通オプション
+function chartOptions(xLabel, y1Label, y2Label) {
+  const opts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { font: { size: 11 }, boxWidth: 12 },
+      },
+      tooltip: {
+        titleFont: { size: 11 },
+        bodyFont: { size: 11 },
+        callbacks: {
+          label: (ctx) => {
+            const val = ctx.parsed.y;
+            if (ctx.dataset.yAxisID === 'y2' || ctx.dataset.label?.includes('売上')) {
+              return ` ${ctx.dataset.label}: ¥${Number(val).toLocaleString()}`;
+            }
+            return ` ${ctx.dataset.label}: ${Number(val).toLocaleString()}`;
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { font: { size: 10 }, maxRotation: 45 },
+        grid: { color: '#F0F0F0' },
+      },
+      y: {
+        ticks: {
+          font: { size: 10 },
+          callback: (v) => Number(v).toLocaleString(),
+        },
+        grid: { color: '#F0F0F0' },
+        title: y1Label ? { display: true, text: y1Label, font: { size: 10 } } : undefined,
+      },
+    },
+  };
+
+  if (y2Label) {
+    opts.scales.y2 = {
+      position: 'right',
+      ticks: {
+        font: { size: 10 },
+        callback: (v) => `¥${Math.round(v / 10000)}万`,
+      },
+      grid: { drawOnChartArea: false },
+      title: { display: true, text: y2Label, font: { size: 10 } },
+    };
+  }
+
+  return opts;
 }

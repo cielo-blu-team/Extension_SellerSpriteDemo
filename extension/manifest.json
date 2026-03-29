@@ -13,6 +13,12 @@
     "https://api.sellersprite.com/*",
     "https://api.anthropic.com/*"
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/chart.umd.js"],
+      "matches": ["https://www.amazon.co.jp/*"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["https://www.amazon.co.jp/s*"],

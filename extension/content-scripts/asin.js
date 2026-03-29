@@ -30,8 +30,7 @@ import { Modal } from '../components/modal.js';
 
     // レビュー分析ハンドラを設定
     modal.onReviewAnalysis(async (resultEl) => {
-      const anthropicKey = settings.anthropicKey;
-      if (!anthropicKey) {
+      if (!settings.anthropicKey) {
         throw new Error('Anthropic APIキーが設定されていません。設定画面で入力してください');
       }
       const reviews = extractReviews();
@@ -48,7 +47,6 @@ import { Modal } from '../components/modal.js';
       modal.renderReviewResult(result.result, resultEl);
     });
 
-    // ASIN分析を並列取得
     fab.setLoading();
     try {
       const data = await sendMessage({ type: 'ASIN_ANALYSIS', asin });
@@ -65,71 +63,131 @@ import { Modal } from '../components/modal.js';
   });
 })();
 
-// URLからASINを取得
+// ── URLからASIN取得 ────────────────────────────────
+
 function getAsinFromUrl() {
-  const match = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/);
-  return match ? match[1] : null;
+  // パターン1: /dp/XXXXXXXXXX
+  const dpMatch = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/i);
+  if (dpMatch) return dpMatch[1].toUpperCase();
+
+  // パターン2: クエリパラメーター
+  const params = new URLSearchParams(window.location.search);
+  const asinParam = params.get('asin') || params.get('ASIN');
+  if (asinParam && /^[A-Z0-9]{10}$/i.test(asinParam)) return asinParam.toUpperCase();
+
+  // パターン3: ページ内のメタデータ
+  const canonicalEl = document.querySelector('link[rel="canonical"]');
+  if (canonicalEl) {
+    const m = canonicalEl.href.match(/\/dp\/([A-Z0-9]{10})/i);
+    if (m) return m[1].toUpperCase();
+  }
+
+  return null;
 }
 
-// 商品タイトル取得
+// ── 商品タイトル取得 ────────────────────────────────
+
 function getProductTitle() {
-  const el =
-    document.querySelector('#productTitle') ||
-    document.querySelector('#title') ||
-    document.querySelector('h1.a-size-large');
-  return el ? el.textContent.trim() : '';
+  const selectors = [
+    '#productTitle',
+    '#title span',
+    '.product-title-word-break',
+    'h1.a-size-large span',
+    'h1[data-automation-id="title"]',
+    'h1',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el && el.textContent.trim()) return el.textContent.trim();
+  }
+  return document.title.replace(/\s*[-|].*$/, '').trim();
 }
 
-// レビュー取得（DOMから直接）
+// ── レビュー取得（DOMから直接） ──────────────────────
+
 function extractReviews() {
   const positive = [];
   const negative = [];
 
-  // レビューリストのセレクター（Amazon DOM構造）
-  const reviewEls = document.querySelectorAll(
-    '[data-hook="review"], .a-section.review, .review'
-  );
+  // 複数のセレクターパターンで対応（Amazon DOM変更に備えてフォールバック）
+  const REVIEW_SELECTORS = [
+    '[data-hook="review"]',                          // 標準
+    '.a-section.review.aok-relative',               // 代替1
+    '.a-section[data-hook="review"]',               // 代替2
+    '.review',                                       // 汎用フォールバック
+  ];
 
-  reviewEls.forEach(el => {
-    const ratingEl =
-      el.querySelector('[data-hook="review-star-rating"] .a-icon-alt') ||
-      el.querySelector('.review-rating .a-icon-alt') ||
-      el.querySelector('i[data-hook="review-star-rating"]');
+  const RATING_SELECTORS = [
+    '[data-hook="review-star-rating"] .a-icon-alt',
+    '[data-hook="cmps-review-star-rating"] .a-icon-alt',
+    '.review-rating .a-icon-alt',
+    'i[data-hook="review-star-rating"] .a-icon-alt',
+    'i.review-rating .a-icon-alt',
+    '.a-star-mini .a-icon-alt',
+  ];
 
-    const titleEl =
-      el.querySelector('[data-hook="review-title"] span:not(.a-icon-alt)') ||
-      el.querySelector('.review-title span');
+  const TITLE_SELECTORS = [
+    '[data-hook="review-title"] > span:not(.a-icon-alt):not(.a-color-secondary)',
+    '[data-hook="review-title"] span.a-size-base',
+    '.review-title > span',
+    'a.review-title span',
+  ];
 
-    const bodyEl =
-      el.querySelector('[data-hook="review-body"] span') ||
-      el.querySelector('.review-text span') ||
-      el.querySelector('.review-text-content span');
+  const BODY_SELECTORS = [
+    '[data-hook="review-body"] span:not(.cr-original-language-review-body span)',
+    '[data-hook="review-body"] .a-expander-content span',
+    '.review-text span',
+    '.review-text-content span',
+    '.a-expander-content.reviewText span',
+  ];
 
-    if (!ratingEl || !bodyEl) return;
+  let reviewEls = [];
+  for (const sel of REVIEW_SELECTORS) {
+    reviewEls = Array.from(document.querySelectorAll(sel));
+    if (reviewEls.length > 0) break;
+  }
 
-    const ratingText = ratingEl.textContent.trim();
-    const ratingMatch = ratingText.match(/(\d+(\.\d+)?)/);
-    if (!ratingMatch) return;
+  for (const el of reviewEls) {
+    const rating = extractRating(el, RATING_SELECTORS);
+    if (rating === null) continue;
 
-    const rating = parseFloat(ratingMatch[1]);
-    const title = titleEl ? titleEl.textContent.trim() : '';
-    const body = bodyEl.textContent.trim();
+    const title = extractText(el, TITLE_SELECTORS);
+    const body = extractText(el, BODY_SELECTORS);
+    if (!body) continue;
 
-    if (!body) return;
-
-    const review = { rating, title, body };
+    const review = { rating, title, body: body.slice(0, 500) };
 
     if (rating >= 4 && positive.length < 15) {
       positive.push(review);
     } else if (rating <= 2 && negative.length < 15) {
       negative.push(review);
     }
-  });
+  }
 
   return { positive, negative };
 }
 
-// APIキー未設定バナー
+function extractRating(el, selectors) {
+  for (const sel of selectors) {
+    const ratingEl = el.querySelector(sel);
+    if (!ratingEl) continue;
+    const text = ratingEl.textContent.trim();
+    const m = text.match(/(\d+(?:[.,]\d+)?)/);
+    if (m) return parseFloat(m[1].replace(',', '.'));
+  }
+  return null;
+}
+
+function extractText(el, selectors) {
+  for (const sel of selectors) {
+    const target = el.querySelector(sel);
+    if (target && target.textContent.trim()) return target.textContent.trim();
+  }
+  return '';
+}
+
+// ── APIキー未設定バナー ────────────────────────────
+
 function insertNoBanner() {
   const banner = document.createElement('div');
   banner.style.cssText = `
@@ -141,9 +199,9 @@ function insertNoBanner() {
     max-width:260px;line-height:1.5;
   `;
   banner.innerHTML = `
-    <strong>EC Lens</strong>: APIキー未設定<br>
+    <strong>EC Lens</strong>: SellerSprite APIキー未設定<br>
     <a href="#" id="ec-lens-opt-link" style="color:#90CAF9;text-decoration:underline">設定画面を開く</a>
-    <span id="ec-lens-banner-close" style="float:right;cursor:pointer;opacity:0.6">×</span>
+    <span id="ec-lens-banner-close" style="float:right;cursor:pointer;opacity:0.6;margin-left:8px">×</span>
   `;
   document.body.appendChild(banner);
 

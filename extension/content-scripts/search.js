@@ -7,11 +7,9 @@ import { SummaryBar } from '../components/summary-bar.js';
 import { applyBadgeToCard } from '../components/product-badge.js';
 
 (async function init() {
-  // 設定確認
   const settings = await sendMessage({ type: 'GET_SETTINGS' });
   if (!settings.extensionEnabled || !settings.searchPageEnabled) return;
 
-  // APIキー未設定の場合はバナー表示
   if (!settings.sellerSpriteKey) {
     insertNoBanner();
     return;
@@ -23,26 +21,27 @@ import { applyBadgeToCard } from '../components/product-badge.js';
   const bar = new SummaryBar();
   const barEl = bar.render();
 
-  // ヘッダー直下に挿入
-  const insertTarget =
-    document.querySelector('#search > span:first-child') ||
-    document.querySelector('[data-component-type="s-search-results"]') ||
-    document.querySelector('.s-result-list') ||
-    document.body.firstElementChild;
-
-  if (insertTarget) {
-    insertTarget.parentNode.insertBefore(barEl, insertTarget);
+  // ヘッダー直下の挿入先（複数セレクターでフォールバック）
+  const insertParent = findSearchResultsParent();
+  if (insertParent) {
+    insertParent.insertBefore(barEl, insertParent.firstChild);
+  } else {
+    // フォールバック：bodyの先頭
+    document.body.insertAdjacentElement('afterbegin', barEl);
   }
 
-  bar.onAnalyzeClick(() => runAnalysis(keyword, bar));
+  let asinMap = null;
 
-  // MutationObserver で動的追加カードにも対応
-  observeNewCards(null); // バッジはanalysis後に付与
+  bar.onAnalyzeClick(() => runAnalysis(keyword, bar, (map) => {
+    asinMap = map;
+    startObserver(() => asinMap);
+  }));
 })();
 
-async function runAnalysis(keyword, bar) {
-  bar.setLoading();
+// ── 分析実行 ───────────────────────────────────────
 
+async function runAnalysis(keyword, bar, onComplete) {
+  bar.setLoading();
   try {
     const result = await sendMessage({ type: 'SEARCH_ANALYSIS', keyword });
 
@@ -53,59 +52,124 @@ async function runAnalysis(keyword, bar) {
 
     bar.setData(result.keywordData, result.productData);
 
-    // 商品カードにバッジ付与
     if (result.productData?.items) {
-      applyBadgesFromProductData(result.productData.items);
+      const map = buildAsinMap(result.productData.items);
+      applyBadgesAll(map);
+      onComplete(map);
     }
   } catch (err) {
     bar.setError(err.message || '通信エラーが発生しました。再試行してください');
   }
 }
 
-function applyBadgesFromProductData(items) {
-  // ASINをキーにしてマップ作成
-  const asinMap = {};
-  items.forEach(item => {
-    if (item.asin) asinMap[item.asin] = item;
-  });
+// ── ASINマップ構築 ─────────────────────────────────
 
-  // 各商品カードにバッジを付与
-  const cards = document.querySelectorAll('[data-asin]');
-  cards.forEach(card => {
-    const asin = card.dataset.asin;
-    if (asin && asinMap[asin]) {
-      applyBadgeToCard(card, asinMap[asin]);
-    }
-  });
+function buildAsinMap(items) {
+  const map = {};
+  for (const item of items) {
+    if (item.asin) map[item.asin] = item;
+  }
+  return map;
 }
 
-function observeNewCards(asinMap) {
+// ── バッジ全カードに適用 ────────────────────────────
+
+function applyBadgesAll(asinMap) {
+  const cards = findProductCards();
+  for (const card of cards) {
+    const asin = extractAsinFromCard(card);
+    if (asin && asinMap[asin]) {
+      applyBadgeToCard(card, asinMap[asin]);
+      card.dataset.ecLensBadge = 'true';
+    }
+  }
+}
+
+// ── 商品カード検索（フォールバック付き） ───────────────
+
+function findProductCards() {
+  // data-asin 属性付きの要素が最も信頼性が高い
+  const byDataAsin = Array.from(document.querySelectorAll('[data-asin]'))
+    .filter(el => el.dataset.asin && el.dataset.asin.length === 10);
+  if (byDataAsin.length > 0) return byDataAsin;
+
+  // フォールバック
+  return Array.from(document.querySelectorAll(
+    '.s-result-item, [data-component-type="s-search-result"], .sg-col-inner .a-section'
+  )).filter(el => el.querySelector('img.s-image'));
+}
+
+function extractAsinFromCard(card) {
+  // data-asin属性（最優先）
+  if (card.dataset.asin && /^[A-Z0-9]{10}$/i.test(card.dataset.asin)) {
+    return card.dataset.asin.toUpperCase();
+  }
+
+  // 商品リンクのhref
+  const link = card.querySelector('a[href*="/dp/"]') || card.querySelector('a.a-link-normal');
+  if (link) {
+    const m = link.href.match(/\/dp\/([A-Z0-9]{10})/i);
+    if (m) return m[1].toUpperCase();
+  }
+
+  return null;
+}
+
+// ── MutationObserver（動的追加カード対応） ───────────
+
+function startObserver(getAsinMap) {
   const observer = new MutationObserver(() => {
-    if (!asinMap) return;
-    const cards = document.querySelectorAll('[data-asin]:not([data-ec-lens-badge])');
-    cards.forEach(card => {
-      const asin = card.dataset.asin;
-      if (asin && asinMap[asin]) {
-        applyBadgeToCard(card, asinMap[asin]);
+    const map = getAsinMap();
+    if (!map) return;
+
+    const unprocessed = findProductCards().filter(
+      card => !card.dataset.ecLensBadge
+    );
+    for (const card of unprocessed) {
+      const asin = extractAsinFromCard(card);
+      if (asin && map[asin]) {
+        applyBadgeToCard(card, map[asin]);
         card.dataset.ecLensBadge = 'true';
       }
-    });
+    }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
+// ── 検索ページの挿入先を探す ────────────────────────
+
+function findSearchResultsParent() {
+  const candidates = [
+    '#search',
+    '[data-component-type="s-search-results"]',
+    '.s-search-results',
+    '#resultsMid',
+    '#center-2',
+  ];
+  for (const sel of candidates) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
+// ── キーワード取得 ─────────────────────────────────
+
 function getSearchKeyword() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('k') || '';
+  return (params.get('k') || params.get('field-keywords') || '').trim();
 }
+
+// ── APIキー未設定バナー ────────────────────────────
 
 function insertNoBanner() {
   const banner = document.createElement('div');
   banner.style.cssText = `
     background:#1A237E;color:#fff;
     font-family:-apple-system,sans-serif;font-size:13px;
-    padding:10px 16px;text-align:center;position:relative;z-index:9999;
+    padding:10px 16px;text-align:center;
+    position:relative;z-index:9999;
   `;
   banner.innerHTML = `
     <strong>EC Lens</strong>：SellerSprite APIキーが設定されていません。
@@ -118,6 +182,8 @@ function insertNoBanner() {
     chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
   });
 }
+
+// ── メッセージ送信ヘルパー ─────────────────────────
 
 function sendMessage(message) {
   return new Promise((resolve, reject) => {

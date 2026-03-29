@@ -1,0 +1,27 @@
+{
+  "name": "sellersprite",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cielo-blu-team/Extension_SellerSpriteDemo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/cielo-blu-team/Extension_SellerSpriteDemo/issues"
+  },
+  "homepage": "https://github.com/cielo-blu-team/Extension_SellerSpriteDemo#readme",
+  "dependencies": {
+    "canvas": "^3.2.2"
+  },
+  "devDependencies": {
+    "chart.js": "^4.5.1"
+  }
+}
