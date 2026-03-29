@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.amazon.co.jp/s*"],
-      "js": ["content-scripts/search.js"],
+      "js": ["dist/search.js"],
       "run_at": "document_idle"
     },
     {
@@ -30,12 +30,13 @@
         "https://www.amazon.co.jp/dp/*",
         "https://www.amazon.co.jp/*/dp/*"
       ],
-      "js": ["content-scripts/asin.js"],
+      "js": ["dist/asin.js"],
       "run_at": "document_idle"
     }
   ],
   "background": {
-    "service_worker": "background/service-worker.js"
+    "service_worker": "background/service-worker.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup/popup.html",
