@@ -37,13 +37,29 @@ export class SellerSpriteAPI {
       }
 
       const response = await fetch(url, options);
-      const data = await response.json();
 
-      if (!response.ok || data.code !== 0) {
-        throw new SellerSpriteError(data.code, data.message || `HTTPエラー: ${response.status}`);
+      // レスポンステキストを先に取得してデバッグしやすくする
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        throw new Error(`APIレスポンスのパースに失敗しました（${response.status}）: ${text.slice(0, 100)}`);
       }
 
-      return data.data;
+      // SellerSprite API: code=0 が成功、それ以外はエラー
+      // code が存在しない場合は response.ok で判断
+      const code = data.code;
+      const isSuccess = code === 0 || code === '0' || (code === undefined && response.ok);
+      if (!isSuccess) {
+        throw new SellerSpriteError(
+          code,
+          data.message || data.msg || data.error || `APIエラー（コード: ${code}, HTTP: ${response.status}）`
+        );
+      }
+
+      // data.data が存在すればそれを返す、なければ data 全体を返す
+      return data.data !== undefined ? data.data : data;
     } catch (err) {
       if (err.name === 'AbortError') {
         throw new Error('タイムアウトしました。再試行してください');

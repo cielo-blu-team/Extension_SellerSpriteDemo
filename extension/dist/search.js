@@ -349,7 +349,13 @@
       async function runAnalysis(keyword, bar, onComplete) {
         bar.setLoading();
         try {
+          console.log("[EC Lens] \u5206\u6790\u958B\u59CB:", keyword);
           const result = await sendMessage({ type: "SEARCH_ANALYSIS", keyword });
+          console.log("[EC Lens] \u5206\u6790\u7D50\u679C:", result);
+          if (!result) {
+            bar.setError("\u30EC\u30B9\u30DD\u30F3\u30B9\u304C\u7A7A\u3067\u3059\u3002\u62E1\u5F35\u6A5F\u80FD\u3092\u518D\u8AAD\u307F\u8FBC\u307F\u3057\u3066\u304F\u3060\u3055\u3044");
+            return;
+          }
           if (result.error) {
             bar.setError(result.error);
             return;
@@ -361,6 +367,7 @@
             onComplete(map);
           }
         } catch (err) {
+          console.error("[EC Lens] \u5206\u6790\u30A8\u30E9\u30FC:", err);
           bar.setError(err.message || "\u901A\u4FE1\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\u3002\u518D\u8A66\u884C\u3057\u3066\u304F\u3060\u3055\u3044");
         }
       }

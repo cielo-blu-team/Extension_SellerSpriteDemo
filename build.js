@@ -15,7 +15,7 @@ const DIST = path.join(EXT, 'dist');
 if (!fs.existsSync(DIST)) fs.mkdirSync(DIST);
 
 async function build() {
-  // Content Scripts をバンドル（ES importを解決）
+  // Content Scripts をバンドル（IIFE形式）
   await esbuild.build({
     entryPoints: [
       path.join(EXT, 'content-scripts/search.js'),
@@ -23,16 +23,28 @@ async function build() {
     ],
     bundle: true,
     outdir: DIST,
-    format: 'iife',   // content scriptはIIFE形式
+    format: 'iife',
     target: 'chrome100',
     sourcemap: false,
     minify: false,
-    define: {
-      // chrome.runtime.getURL は実行時に解決されるためそのまま
-    },
   });
+  console.log('✓ content scripts バンドル完了');
 
-  console.log('✓ content scripts バンドル完了 → extension/dist/');
+  // Service Worker をバンドル（ESM形式、type:module不要になる）
+  await esbuild.build({
+    entryPoints: [
+      path.join(EXT, 'background/service-worker.js'),
+    ],
+    bundle: true,
+    outfile: path.join(DIST, 'service-worker.js'),
+    format: 'esm',
+    target: 'chrome100',
+    sourcemap: false,
+    minify: false,
+  });
+  console.log('✓ service worker バンドル完了');
+
+  console.log('ビルド完了 → extension/dist/');
 }
 
 build().catch(err => { console.error(err); process.exit(1); });

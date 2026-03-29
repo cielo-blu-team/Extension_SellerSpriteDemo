@@ -43,7 +43,14 @@ import { applyBadgeToCard } from '../components/product-badge.js';
 async function runAnalysis(keyword, bar, onComplete) {
   bar.setLoading();
   try {
+    console.log('[EC Lens] 分析開始:', keyword);
     const result = await sendMessage({ type: 'SEARCH_ANALYSIS', keyword });
+    console.log('[EC Lens] 分析結果:', result);
+
+    if (!result) {
+      bar.setError('レスポンスが空です。拡張機能を再読み込みしてください');
+      return;
+    }
 
     if (result.error) {
       bar.setError(result.error);
@@ -58,6 +65,7 @@ async function runAnalysis(keyword, bar, onComplete) {
       onComplete(map);
     }
   } catch (err) {
+    console.error('[EC Lens] 分析エラー:', err);
     bar.setError(err.message || '通信エラーが発生しました。再試行してください');
   }
 }

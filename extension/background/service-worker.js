@@ -19,9 +19,12 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // メッセージハンドラ
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handleMessage(message, sender).then(sendResponse).catch((err) => {
-    sendResponse({ error: err.message || '不明なエラーが発生しました' });
-  });
+  handleMessage(message, sender)
+    .then(sendResponse)
+    .catch((err) => {
+      console.error('[EC Lens SW] エラー:', message.type, err);
+      sendResponse({ error: err.message || '不明なエラーが発生しました' });
+    });
   return true; // 非同期レスポンスのためtrueを返す
 });
 
