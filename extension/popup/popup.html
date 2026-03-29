@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>EC Lens</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      width: 280px;
+      background: #fff;
+      color: #333;
+    }
+    header {
+      background: #1A237E;
+      color: #fff;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 15px; font-weight: 700; }
+    header .ver { font-size: 10px; color: #90CAF9; }
+    .status-row {
+      padding: 10px 14px;
+      border-bottom: 1px solid #E0E0E0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background: #2E7D32; }
+    .status-dot.warn { background: #E65100; }
+    .status-dot.off { background: #BDBDBD; }
+    .status-text { font-size: 12px; color: #333; }
+    .visits-row {
+      padding: 8px 14px;
+      background: #F5F7FF;
+      font-size: 11px;
+      color: #555;
+      border-bottom: 1px solid #E0E0E0;
+    }
+    .visits-row span { color: #1560BD; font-weight: 600; }
+    .actions {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 9px 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #1560BD; color: #fff; }
+    .btn-primary:hover { background: #1976D2; }
+    .btn-secondary { background: #F0F0F0; color: #333; }
+    .btn-secondary:hover { background: #E0E0E0; }
+    footer {
+      padding: 8px 14px;
+      font-size: 10px;
+      color: #999;
+      border-top: 1px solid #E0E0E0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>EC Lens</h1>
+    <span class="ver">v1.0.0</span>
+  </header>
+
+  <div class="status-row" id="status-row">
+    <div class="status-dot off" id="status-dot"></div>
+    <span class="status-text" id="status-text">読み込み中...</span>
+  </div>
+
+  <div class="visits-row" id="visits-row" style="display:none">
+    本日の残りAPI回数: <span id="visits-remaining">---</span>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="open-settings">設定画面を開く</button>
+    <button class="btn btn-secondary" id="clear-cache">キャッシュをクリア</button>
+  </div>
+
+  <footer>Amazon.co.jp 専用 | SellerSprite API連携</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

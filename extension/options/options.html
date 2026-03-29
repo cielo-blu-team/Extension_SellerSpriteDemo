@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EC Lens 設定</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      background: #F5F5F5;
+      color: #333;
+      min-height: 100vh;
+    }
+    header {
+      background: #1A237E;
+      color: #fff;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 18px; font-weight: 700; }
+    header .subtitle { font-size: 12px; color: #90CAF9; }
+    .container { max-width: 680px; margin: 32px auto; padding: 0 16px; }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: #E8EAF6;
+      padding: 10px 20px;
+      font-weight: 700;
+      font-size: 13px;
+      color: #1A237E;
+      border-bottom: 1px solid #C5CAE9;
+    }
+    .card-body { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 6px;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"], input[type="password"] {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #BDBDBD;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #1560BD; }
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #1560BD; color: #fff; }
+    .btn-primary:hover { background: #1976D2; }
+    .btn-secondary { background: #E0E0E0; color: #333; }
+    .btn-secondary:hover { background: #BDBDBD; }
+    .btn-danger { background: #C62828; color: #fff; }
+    .btn-danger:hover { background: #B71C1C; }
+    .test-result {
+      margin-top: 8px;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    .test-result.success { background: #E8F5E9; color: #2E7D32; display: block; }
+    .test-result.error { background: #FFEBEE; color: #C62828; display: block; }
+    .test-result.loading { background: #E3F2FD; color: #1560BD; display: block; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #F0F0F0;
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 13px; color: #333; }
+    .toggle-desc { font-size: 11px; color: #888; margin-top: 2px; }
+    /* トグルスイッチ */
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .switch input { display: none; }
+    .switch .slider {
+      position: absolute;
+      inset: 0;
+      background: #BDBDBD;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .switch .slider:before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .switch input:checked + .slider { background: #1560BD; }
+    .switch input:checked + .slider:before { transform: translateX(20px); }
+    .save-area {
+      text-align: right;
+      margin-top: 8px;
+    }
+    .save-msg {
+      display: inline-block;
+      font-size: 12px;
+      color: #2E7D32;
+      margin-right: 10px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .save-msg.show { opacity: 1; }
+    .danger-zone .card-header { background: #FFEBEE; color: #C62828; border-color: #FFCDD2; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>EC Lens</h1>
+      <div class="subtitle">SellerSprite Amazon市場分析ツール 設定</div>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- SellerSprite APIキー -->
+    <div class="card">
+      <div class="card-header">SellerSprite APIキー</div>
+      <div class="card-body">
+        <div class="form-group">
+          <label for="sellersprite-key">secret-key</label>
+          <div class="input-row">
+            <input type="password" id="sellersprite-key" placeholder="your-secret-key">
+            <button class="btn btn-secondary" id="toggle-ss-key">表示</button>
+            <button class="btn btn-primary" id="test-ss-key">接続テスト</button>
+          </div>
+          <div class="test-result" id="ss-test-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Anthropic APIキー -->
+    <div class="card">
+      <div class="card-header">Anthropic APIキー（AIレビュー分析用）</div>
+      <div class="card-body">
+        <div class="form-group">
+          <label for="anthropic-key">APIキー</label>
+          <div class="input-row">
+            <input type="password" id="anthropic-key" placeholder="sk-ant-...">
+            <button class="btn btn-secondary" id="toggle-ant-key">表示</button>
+            <button class="btn btn-primary" id="test-ant-key">接続テスト</button>
+          </div>
+          <div class="test-result" id="ant-test-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 表示設定 -->
+    <div class="card">
+      <div class="card-header">表示設定</div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">拡張機能を有効にする</div>
+            <div class="toggle-desc">オフにするとすべての機能が停止します</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="extension-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">検索結果ページで有効にする</div>
+            <div class="toggle-desc">amazon.co.jp/s?k=... でサマリーバーを表示</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="search-page-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">商品詳細ページで有効にする</div>
+            <div class="toggle-desc">amazon.co.jp/dp/... でフローティングボタンを表示</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="asin-page-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="save-area">
+          <span class="save-msg" id="save-msg">保存しました</span>
+          <button class="btn btn-primary" id="save-settings">設定を保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- キャッシュクリア -->
+    <div class="card danger-zone">
+      <div class="card-header">キャッシュ管理</div>
+      <div class="card-body">
+        <p style="font-size:12px;color:#666;margin-bottom:12px">
+          保存済みの分析結果（セッションキャッシュ）を削除します。<br>
+          データが古いと感じる場合や再取得が必要な場合にご利用ください。
+        </p>
+        <button class="btn btn-danger" id="clear-cache">キャッシュをクリア</button>
+        <div class="test-result" id="cache-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

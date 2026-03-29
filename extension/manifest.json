@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "EC Lens - SellerSprite Amazon分析",
+  "short_name": "EC Lens",
+  "version": "1.0.0",
+  "description": "Amazon.co.jpの検索結果・商品詳細ページにSellerSpriteのデータをオーバーレイ表示します",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.amazon.co.jp/*",
+    "https://api.sellersprite.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.amazon.co.jp/s*"],
+      "js": ["content-scripts/search.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.amazon.co.jp/dp/*",
+        "https://www.amazon.co.jp/*/dp/*"
+      ],
+      "js": ["content-scripts/asin.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "48": "assets/icon-48.png",
+      "128": "assets/icon-128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "assets/icon-16.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  }
+}
