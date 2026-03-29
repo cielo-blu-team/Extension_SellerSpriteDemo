@@ -14,7 +14,13 @@ async function checkStatus() {
   const visitsEl = document.getElementById('visits-remaining');
 
   try {
-    const result = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    const result = await sendMessage({ type: 'GET_SETTINGS' });
+
+    if (!result || result.error) {
+      dot.className = 'status-dot warn';
+      text.textContent = result?.error || 'Service Workerと通信できません';
+      return;
+    }
 
     if (!result.extensionEnabled) {
       dot.className = 'status-dot off';
@@ -31,24 +37,21 @@ async function checkStatus() {
     dot.className = 'status-dot ok';
     text.textContent = '有効 — Amazon.co.jp 対応中';
 
-    // API残量を非同期で取得
+    // API残量を非同期で取得（失敗しても表示は変えない）
     try {
-      const visits = await chrome.runtime.sendMessage({
+      const visits = await sendMessage({
         type: 'TEST_SELLERSPRITE_KEY',
         secretKey: result.sellerSpriteKey,
       });
-      if (!visits.error) {
+      if (visits && !visits.error && visits.remaining != null) {
         visitsRow.style.display = 'block';
-        visitsEl.textContent = visits.remaining != null
-          ? `${visits.remaining} / ${visits.total}`
-          : '---';
+        visitsEl.textContent = `${visits.remaining} / ${visits.total}`;
       }
-    } catch (_) {
-      // 残量取得失敗は無視
-    }
+    } catch (_) {}
+
   } catch (err) {
     dot.className = 'status-dot warn';
-    text.textContent = 'エラーが発生しました';
+    text.textContent = err.message || 'エラーが発生しました';
   }
 }
 
@@ -63,7 +66,7 @@ function bindEvents() {
     btn.disabled = true;
     btn.textContent = 'クリア中...';
     try {
-      await chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' });
+      await sendMessage({ type: 'CLEAR_CACHE' });
       btn.textContent = 'クリア完了';
       setTimeout(() => {
         btn.textContent = 'キャッシュをクリア';
@@ -73,5 +76,23 @@ function bindEvents() {
       btn.textContent = 'エラー';
       btn.disabled = false;
     }
+  });
+}
+
+// タイムアウト付き sendMessage（3秒で諦める）
+function sendMessage(message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Service Workerが応答しません。拡張機能を再読み込みしてください'));
+    }, 3000);
+
+    chrome.runtime.sendMessage(message, (response) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response);
+      }
+    });
   });
 }

@@ -30,14 +30,14 @@ async function build() {
   });
   console.log('✓ content scripts バンドル完了');
 
-  // Service Worker をバンドル（ESM形式、type:module不要になる）
+  // Service Worker をバンドル（IIFE形式 — type:module不要、export文なし）
   await esbuild.build({
     entryPoints: [
       path.join(EXT, 'background/service-worker.js'),
     ],
     bundle: true,
     outfile: path.join(DIST, 'service-worker.js'),
-    format: 'esm',
+    format: 'iife',
     target: 'chrome100',
     sourcemap: false,
     minify: false,
