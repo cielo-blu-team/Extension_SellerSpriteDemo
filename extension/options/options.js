@@ -9,16 +9,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadSettings() {
   const result = await chrome.storage.local.get([
-    'sellerSpriteKey',
     'anthropicKey',
     'extensionEnabled',
     'searchPageEnabled',
     'asinPageEnabled',
   ]);
 
-  if (result.sellerSpriteKey) {
-    document.getElementById('sellersprite-key').value = result.sellerSpriteKey;
-  }
   if (result.anthropicKey) {
     document.getElementById('anthropic-key').value = result.anthropicKey;
   }
@@ -29,17 +25,11 @@ async function loadSettings() {
 
 function bindEvents() {
   // パスワード表示切り替え
-  document.getElementById('toggle-ss-key').addEventListener('click', () => {
-    toggleVisibility('sellersprite-key', 'toggle-ss-key');
-  });
   document.getElementById('toggle-ant-key').addEventListener('click', () => {
     toggleVisibility('anthropic-key', 'toggle-ant-key');
   });
 
   // 接続テスト
-  document.getElementById('test-ss-key').addEventListener('click', () => {
-    testSellerSpriteKey();
-  });
   document.getElementById('test-ant-key').addEventListener('click', () => {
     testAnthropicKey();
   });
@@ -60,33 +50,6 @@ function toggleVisibility(inputId, btnId) {
   } else {
     input.type = 'password';
     btn.textContent = '表示';
-  }
-}
-
-async function testSellerSpriteKey() {
-  const key = document.getElementById('sellersprite-key').value.trim();
-  const resultEl = document.getElementById('ss-test-result');
-
-  if (!key) {
-    showResult(resultEl, 'error', 'APIキーを入力してください');
-    return;
-  }
-
-  showResult(resultEl, 'loading', '接続テスト中...');
-
-  try {
-    const result = await chrome.runtime.sendMessage({
-      type: 'TEST_SELLERSPRITE_KEY',
-      secretKey: key,
-    });
-    if (result.error) {
-      showResult(resultEl, 'error', result.error);
-    } else {
-      await chrome.storage.local.set({ sellerSpriteKey: key });
-      showResult(resultEl, 'success', `接続成功・保存しました — ${result.message}`);
-    }
-  } catch (err) {
-    showResult(resultEl, 'error', err.message || '接続エラー');
   }
 }
 
@@ -118,14 +81,12 @@ async function testAnthropicKey() {
 }
 
 async function saveSettings() {
-  const sellerSpriteKey = document.getElementById('sellersprite-key').value.trim();
   const anthropicKey = document.getElementById('anthropic-key').value.trim();
   const extensionEnabled = document.getElementById('extension-enabled').checked;
   const searchPageEnabled = document.getElementById('search-page-enabled').checked;
   const asinPageEnabled = document.getElementById('asin-page-enabled').checked;
 
   await chrome.storage.local.set({
-    sellerSpriteKey,
     anthropicKey,
     extensionEnabled,
     searchPageEnabled,

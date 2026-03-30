@@ -5,6 +5,7 @@
 
 import { SellerSpriteAPI } from '../api/sellersprite.js';
 import { ClaudeAPI } from '../api/claude.js';
+import { SELLERSPRITE_SECRET_KEY } from '../config.js';
 
 const CACHE_TTL = {
   categoryNode: 7 * 24 * 60 * 60 * 1000, // 7日
@@ -44,9 +45,6 @@ async function handleMessage(message, sender) {
     case 'REVIEW_ANALYSIS':
       return handleReviewAnalysis(message.asin, message.productTitle, message.reviews);
 
-    case 'TEST_SELLERSPRITE_KEY':
-      return testSellerSpriteKey(message.secretKey);
-
     case 'TEST_ANTHROPIC_KEY':
       return testAnthropicKey(message.apiKey);
 
@@ -65,14 +63,13 @@ async function handleMessage(message, sender) {
 // 設定取得
 async function getSettings() {
   const result = await chrome.storage.local.get([
-    'sellerSpriteKey',
     'anthropicKey',
     'extensionEnabled',
     'searchPageEnabled',
     'asinPageEnabled',
   ]);
   return {
-    sellerSpriteKey: result.sellerSpriteKey || '',
+    sellerSpriteKey: SELLERSPRITE_SECRET_KEY,
     anthropicKey: result.anthropicKey || '',
     extensionEnabled: result.extensionEnabled !== false,
     searchPageEnabled: result.searchPageEnabled !== false,
@@ -173,12 +170,6 @@ async function handleReviewAnalysis(asin, productTitle, reviews) {
 
   const claude = new ClaudeAPI(settings.anthropicKey);
   return claude.analyzeReviews(asin, productTitle, reviews);
-}
-
-// SellerSprite APIキーテスト
-async function testSellerSpriteKey(secretKey) {
-  const api = new SellerSpriteAPI(secretKey);
-  return api.checkVisits();
 }
 
 // Anthropic APIキーテスト

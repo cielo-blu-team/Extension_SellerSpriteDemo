@@ -360,11 +360,20 @@ ${negativeText || "\uFF08\u306A\u3057\uFF09"}
     }
   });
 
+  // extension/config.js
+  var SELLERSPRITE_SECRET_KEY;
+  var init_config = __esm({
+    "extension/config.js"() {
+      SELLERSPRITE_SECRET_KEY = "YOUR_SELLERSPRITE_SECRET_KEY_HERE";
+    }
+  });
+
   // extension/background/service-worker.js
   var require_service_worker = __commonJS({
     "extension/background/service-worker.js"() {
       init_sellersprite();
       init_claude();
+      init_config();
       var CACHE_TTL = {
         categoryNode: 7 * 24 * 60 * 60 * 1e3
         // 7日
@@ -392,8 +401,6 @@ ${negativeText || "\uFF08\u306A\u3057\uFF09"}
             return handleAsinAnalysis(message.asin, message.keyword);
           case "REVIEW_ANALYSIS":
             return handleReviewAnalysis(message.asin, message.productTitle, message.reviews);
-          case "TEST_SELLERSPRITE_KEY":
-            return testSellerSpriteKey(message.secretKey);
           case "TEST_ANTHROPIC_KEY":
             return testAnthropicKey(message.apiKey);
           case "CLEAR_CACHE":
@@ -407,14 +414,13 @@ ${negativeText || "\uFF08\u306A\u3057\uFF09"}
       }
       async function getSettings() {
         const result = await chrome.storage.local.get([
-          "sellerSpriteKey",
           "anthropicKey",
           "extensionEnabled",
           "searchPageEnabled",
           "asinPageEnabled"
         ]);
         return {
-          sellerSpriteKey: result.sellerSpriteKey || "",
+          sellerSpriteKey: SELLERSPRITE_SECRET_KEY,
           anthropicKey: result.anthropicKey || "",
           extensionEnabled: result.extensionEnabled !== false,
           searchPageEnabled: result.searchPageEnabled !== false,
@@ -493,10 +499,6 @@ ${negativeText || "\uFF08\u306A\u3057\uFF09"}
         }
         const claude = new ClaudeAPI(settings.anthropicKey);
         return claude.analyzeReviews(asin, productTitle, reviews);
-      }
-      async function testSellerSpriteKey(secretKey) {
-        const api = new SellerSpriteAPI(secretKey);
-        return api.checkVisits();
       }
       async function testAnthropicKey(apiKey) {
         const claude = new ClaudeAPI(apiKey);
