@@ -39,7 +39,7 @@ async function handleMessage(message, sender) {
       return handleSearchAnalysis(message.keyword);
 
     case 'ASIN_ANALYSIS':
-      return handleAsinAnalysis(message.asin);
+      return handleAsinAnalysis(message.asin, message.keyword);
 
     case 'REVIEW_ANALYSIS':
       return handleReviewAnalysis(message.asin, message.productTitle, message.reviews);
@@ -124,7 +124,7 @@ async function handleSearchAnalysis(keyword) {
 }
 
 // 商品詳細ページ分析
-async function handleAsinAnalysis(asin) {
+async function handleAsinAnalysis(asin, keyword) {
   const settings = await getSettings();
   if (!settings.sellerSpriteKey) {
     throw new Error('SellerSprite APIキーが設定されていません');
@@ -142,7 +142,7 @@ async function handleAsinAnalysis(asin) {
       api.asinDetail('JP', asin),
       api.salesPredictionAsin(asin),
       api.trafficKeyword(asin),
-      api.googleTrends(asin),
+      api.googleTrends(keyword || asin),
       api.salesPredictionBsr(asin),
     ]);
 

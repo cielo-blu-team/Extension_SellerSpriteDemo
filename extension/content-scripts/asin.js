@@ -1,9 +1,8 @@
 /**
  * Content Script - 商品詳細ページ（amazon.co.jp/dp/*）
- * フローティングボタン表示 → モーダル表示 → AIレビュー分析
+ * 画面下部スティッキーパネル表示 → APIデータ取得 → AIレビュー分析
  */
 
-import { FloatingButton } from '../components/floating-btn.js';
 import { Modal } from '../components/modal.js';
 
 (async function init() {
@@ -18,64 +17,124 @@ import { Modal } from '../components/modal.js';
   const asin = getAsinFromUrl();
   if (!asin) return;
 
-  const fab = new FloatingButton();
-  const fabEl = fab.render();
-  document.body.appendChild(fabEl);
+  const productTitle = getProductTitle();
+  const panel = new Modal();
+  const panelEl = panel.render(asin);
+  document.body.appendChild(panelEl);
 
-  fab.onClick(async () => {
-    const modal = new Modal();
-    const productTitle = getProductTitle();
-    const modalEl = modal.render(asin);
-    document.body.appendChild(modalEl);
+  // 商品タイトルをヘッダーに表示
+  if (productTitle) {
+    panelEl.querySelector('#ec-lens-panel-title').textContent = productTitle;
+  }
 
-    // レビュー分析ハンドラを設定
-    modal.onReviewAnalysis(async (resultEl) => {
-      if (!settings.anthropicKey) {
-        throw new Error('Anthropic APIキーが設定されていません。設定画面で入力してください');
-      }
-      const reviews = extractReviews();
-      if (!reviews.positive.length && !reviews.negative.length) {
-        throw new Error('このページにレビューが見つかりませんでした');
-      }
-      const result = await sendMessage({
-        type: 'REVIEW_ANALYSIS',
-        asin,
-        productTitle,
-        reviews,
+  // レビュー分析ハンドラを設定
+  panel.onReviewAnalysis(async (resultEl) => {
+    resultEl.innerHTML = '<div style="color:#555;padding:8px 0">レビュー件数を確認中...</div>';
+
+    // 推定件数が300件超の場合は事前確認
+    const estimatedCount = getProductReviewCount();
+    if (estimatedCount && estimatedCount > 100) {
+      const confirmed = await new Promise((resolve) => {
+        resultEl.innerHTML = `
+          <div style="padding:12px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;margin:8px 0;font-size:14px;line-height:1.6;">
+            <div style="color:#5d4037;margin-bottom:10px;">
+              このASINには約<strong>${estimatedCount.toLocaleString()}</strong>件のレビューがあります。<br>
+              高評価・低評価それぞれ最大200件を取得し分析します（1〜2分程度）。実行しますか？
+            </div>
+            <button id="ec-lens-confirm-yes" style="background:#1A237E;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;margin-right:8px;font-size:13px;">実行する</button>
+            <button id="ec-lens-confirm-no" style="background:#e0e0e0;color:#333;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px;">キャンセル</button>
+          </div>`;
+        resultEl.querySelector('#ec-lens-confirm-yes').addEventListener('click', () => resolve(true));
+        resultEl.querySelector('#ec-lens-confirm-no').addEventListener('click', () => resolve(false));
       });
-      if (result.error) throw new Error(result.error);
-      modal.renderReviewResult(result.result, resultEl);
+      if (!confirmed) {
+        resultEl.innerHTML = '<div style="color:#999;padding:8px 0">キャンセルしました</div>';
+        return;
+      }
+    }
+
+    resultEl.innerHTML = '<div style="color:#555;padding:8px 0">レビューを取得中...</div>';
+
+    // バリエーション商品は親ASIN（canonical）でレビューを取得
+    const reviewAsin = getReviewAsin();
+    const reviews = await fetchAllReviews(reviewAsin, (pos, neg) => {
+      resultEl.innerHTML = `<div style="color:#555;padding:8px 0">レビューを取得中... 高評価${pos}件 / 低評価${neg}件</div>`;
     });
 
-    fab.setLoading();
+    if (!reviews.positive.length && !reviews.negative.length) {
+      throw new Error('レビューが見つかりませんでした');
+    }
+
+    const total = reviews.positive.length + reviews.negative.length;
+    resultEl.innerHTML = `<div style="color:#555;padding:8px 0">Claude分析中... (高評価${reviews.positive.length}件 / 低評価${reviews.negative.length}件 / 計${total}件)</div>`;
+
+    const result = await sendMessage({
+      type: 'REVIEW_ANALYSIS',
+      asin,
+      productTitle,
+      reviews,
+    });
+    if (result.error) throw new Error(result.error);
+    panel.renderReviewResult(result.result, resultEl);
+  });
+
+  // 分析ボタンのハンドラ
+  panel.onAnalyzeClick(async () => {
+    panel.setLoading();
     try {
-      const data = await sendMessage({ type: 'ASIN_ANALYSIS', asin });
+      const data = await sendMessage({ type: 'ASIN_ANALYSIS', asin, keyword: productTitle });
       if (data.error) {
-        modal.setData({ error: data.error }, productTitle);
+        panel.setData({ error: data.error }, productTitle);
       } else {
-        modal.setData(data, productTitle);
+        panel.setData(data, productTitle);
       }
     } catch (err) {
-      modal.setData({ error: err.message }, productTitle);
+      panel.setData({ error: err.message }, productTitle);
     } finally {
-      fab.setReady();
+      panel.setReady();
     }
   });
 })();
 
+// ── レビュー用ASIN取得（バリエーション商品は親ASINを優先） ──────
+
+function getReviewAsin() {
+  const canonicalEl = document.querySelector('link[rel="canonical"]');
+  if (canonicalEl) {
+    const m = canonicalEl.href.match(/\/dp\/([A-Z0-9]{10})/i);
+    if (m) return m[1].toUpperCase();
+  }
+  return getAsinFromUrl();
+}
+
+// ── 商品ページから推定レビュー件数取得 ────────────────────
+
+function getProductReviewCount() {
+  const selectors = [
+    '#acrCustomerReviewText',
+    '#acrCustomerReviewLink span',
+    '[data-hook="total-review-count"]',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) {
+      const m = el.textContent.replace(/[,，、\s]/g, '').match(/(\d+)/);
+      if (m) return parseInt(m[1]);
+    }
+  }
+  return null;
+}
+
 // ── URLからASIN取得 ────────────────────────────────
 
 function getAsinFromUrl() {
-  // パターン1: /dp/XXXXXXXXXX
   const dpMatch = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/i);
   if (dpMatch) return dpMatch[1].toUpperCase();
 
-  // パターン2: クエリパラメーター
   const params = new URLSearchParams(window.location.search);
   const asinParam = params.get('asin') || params.get('ASIN');
   if (asinParam && /^[A-Z0-9]{10}$/i.test(asinParam)) return asinParam.toUpperCase();
 
-  // パターン3: ページ内のメタデータ
   const canonicalEl = document.querySelector('link[rel="canonical"]');
   if (canonicalEl) {
     const m = canonicalEl.href.match(/\/dp\/([A-Z0-9]{10})/i);
@@ -103,65 +162,147 @@ function getProductTitle() {
   return document.title.replace(/\s*[-|].*$/, '').trim();
 }
 
-// ── レビュー取得（DOMから直接） ──────────────────────
+// ── レビュー取得（複数ページ・最大1,000件） ────────────────
 
-function extractReviews() {
-  const positive = [];
-  const negative = [];
+const REVIEW_SELECTORS = [
+  '[data-hook="review"]',
+  '.a-section.review.aok-relative',
+  '.a-section[data-hook="review"]',
+  '.review',
+];
+const RATING_SELECTORS = [
+  '[data-hook="review-star-rating"] .a-icon-alt',
+  '[data-hook="cmps-review-star-rating"] .a-icon-alt',
+  '.review-rating .a-icon-alt',
+  'i[data-hook="review-star-rating"] .a-icon-alt',
+  'i.review-rating .a-icon-alt',
+  '.a-star-mini .a-icon-alt',
+];
+const TITLE_SELECTORS = [
+  '[data-hook="review-title"] > span:not(.a-icon-alt):not(.a-color-secondary)',
+  '[data-hook="review-title"] span.a-size-base',
+  '.review-title > span',
+  'a.review-title span',
+];
+const BODY_SELECTORS = [
+  '[data-hook="review-body"] span:not(.cr-original-language-review-body span)',
+  '[data-hook="review-body"] .a-expander-content span',
+  '.review-text span',
+  '.review-text-content span',
+  '.a-expander-content.reviewText span',
+];
 
-  // 複数のセレクターパターンで対応（Amazon DOM変更に備えてフォールバック）
-  const REVIEW_SELECTORS = [
-    '[data-hook="review"]',                          // 標準
-    '.a-section.review.aok-relative',               // 代替1
-    '.a-section[data-hook="review"]',               // 代替2
-    '.review',                                       // 汎用フォールバック
-  ];
-
-  const RATING_SELECTORS = [
-    '[data-hook="review-star-rating"] .a-icon-alt',
-    '[data-hook="cmps-review-star-rating"] .a-icon-alt',
-    '.review-rating .a-icon-alt',
-    'i[data-hook="review-star-rating"] .a-icon-alt',
-    'i.review-rating .a-icon-alt',
-    '.a-star-mini .a-icon-alt',
-  ];
-
-  const TITLE_SELECTORS = [
-    '[data-hook="review-title"] > span:not(.a-icon-alt):not(.a-color-secondary)',
-    '[data-hook="review-title"] span.a-size-base',
-    '.review-title > span',
-    'a.review-title span',
-  ];
-
-  const BODY_SELECTORS = [
-    '[data-hook="review-body"] span:not(.cr-original-language-review-body span)',
-    '[data-hook="review-body"] .a-expander-content span',
-    '.review-text span',
-    '.review-text-content span',
-    '.a-expander-content.reviewText span',
-  ];
-
+// 任意のDocumentからレビュー抽出
+function extractReviewsFromDoc(doc) {
   let reviewEls = [];
   for (const sel of REVIEW_SELECTORS) {
-    reviewEls = Array.from(document.querySelectorAll(sel));
+    reviewEls = Array.from(doc.querySelectorAll(sel));
     if (reviewEls.length > 0) break;
   }
-
+  const results = [];
   for (const el of reviewEls) {
     const rating = extractRating(el, RATING_SELECTORS);
     if (rating === null) continue;
-
     const title = extractText(el, TITLE_SELECTORS);
     const body = extractText(el, BODY_SELECTORS);
     if (!body) continue;
+    results.push({ rating, title, body: body.slice(0, 200) });
+  }
+  return results;
+}
 
-    const review = { rating, title, body: body.slice(0, 500) };
+// ブロック・CAPTCHA検出
+function isBlocked(resp, html) {
+  if (resp.url.includes('/ap/signin') || resp.url.includes('/gp/sign-in')) return 'login';
+  if (resp.url.includes('/errors/validateCaptcha') || resp.url.includes('captcha')) return 'captcha';
+  if (resp.status === 429 || resp.status === 503) return 'rate_limit';
+  // HTMLにCAPTCHA要素が含まれる場合
+  if (html && html.includes('Type the characters you see in this image')) return 'captcha';
+  return null;
+}
 
-    if (rating >= 4 && positive.length < 15) {
-      positive.push(review);
-    } else if (rating <= 2 && negative.length < 15) {
-      negative.push(review);
+// 1ページ分のレビューページを取得
+// 戻り値: レビュー配列 / [] = 最終ページ越え / null = ブロック/エラー
+// ASINごとに有効なレビューURLパスをキャッシュ
+const _reviewPathCache = {};
+
+async function fetchReviewPage(asin, page) {
+  const params = `?ie=UTF8&pageNumber=${page}&reviewerType=all_reviews&sortBy=recent`;
+  // 候補URLパス（ASINによって異なるため両方試す）
+  const paths = _reviewPathCache[asin]
+    ? [_reviewPathCache[asin]]
+    : [
+        `https://www.amazon.co.jp/product-reviews/${asin}/`,
+        `https://www.amazon.co.jp/gp/product-reviews/${asin}/`,
+      ];
+
+  for (const basePath of paths) {
+    try {
+      const resp = await fetch(basePath + params, { credentials: 'include' });
+      if (resp.status === 404) continue; // 別のパスを試す
+      if (!resp.ok) return null;
+      const html = await resp.text();
+      const blockReason = isBlocked(resp, html);
+      if (blockReason) return { blocked: blockReason };
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      // 成功したパスをキャッシュ
+      if (!_reviewPathCache[asin]) _reviewPathCache[asin] = basePath;
+      return extractReviewsFromDoc(doc);
+    } catch (_) {
+      continue;
     }
+  }
+  return null;
+}
+
+// ★4以上200件・★2以下200件・最大400件取得（1ページずつ順次・ランダム遅延）
+// ログイン必須・ブロックの場合は現在ページのDOMにフォールバック
+async function fetchAllReviews(asin, onProgress) {
+  const positive = []; // ★4以上
+  const negative = []; // ★2以下
+  const MAX_PER_CATEGORY = 200;
+  const MAX_PAGES = 20; // 最大20ページ（10件/ページ × 20 = 200件）
+
+  let page = 1;
+  let blocked = false;
+  let noAddPages = 0; // 追加ゼロのページ数
+
+  while (page <= MAX_PAGES && (positive.length < MAX_PER_CATEGORY || negative.length < MAX_PER_CATEGORY)) {
+    const res = await fetchReviewPage(asin, page);
+
+    if (res === null) break;
+    if (res.blocked) { blocked = true; break; }
+
+    let anyAdded = false;
+    if (res.length > 0) {
+      for (const r of res) {
+        if (r.rating >= 4 && positive.length < MAX_PER_CATEGORY) { positive.push(r); anyAdded = true; }
+        else if (r.rating <= 2 && negative.length < MAX_PER_CATEGORY) { negative.push(r); anyAdded = true; }
+      }
+    } else {
+      break; // 最終ページ越え
+    }
+
+    if (onProgress) onProgress(positive.length, negative.length);
+    if (positive.length >= MAX_PER_CATEGORY && negative.length >= MAX_PER_CATEGORY) break;
+
+    // 連続して追加なし → 残りのカテゴリは存在しないと判断
+    if (!anyAdded) { noAddPages++; if (noAddPages >= 5) break; } else noAddPages = 0;
+
+    page++;
+    // 人間のブラウジングに近いランダム遅延（1.5〜3秒）
+    const delay = 1500 + Math.random() * 1500;
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  // ブロックまたはレビューゼロの場合、現在ページのDOMから抽出
+  if (blocked || (positive.length === 0 && negative.length === 0)) {
+    const domReviews = extractReviewsFromDoc(document);
+    for (const r of domReviews) {
+      if (r.rating >= 4) positive.push(r);
+      else if (r.rating <= 2) negative.push(r);
+    }
+    if (onProgress) onProgress(positive.length, negative.length);
   }
 
   return { positive, negative };
@@ -216,12 +357,21 @@ function insertNoBanner() {
 
 function sendMessage(message) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(response);
-      }
-    });
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          const msg = chrome.runtime.lastError.message || '';
+          if (msg.includes('Extension context invalidated') || msg.includes('Could not establish connection')) {
+            reject(new Error('拡張機能が更新されました。ページを再読み込みしてください（Cmd+R）'));
+          } else {
+            reject(new Error(msg));
+          }
+        } else {
+          resolve(response);
+        }
+      });
+    } catch (e) {
+      reject(new Error('拡張機能が更新されました。ページを再読み込みしてください（Cmd+R）'));
+    }
   });
 }

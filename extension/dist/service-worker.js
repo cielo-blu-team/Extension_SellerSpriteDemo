@@ -74,15 +74,18 @@
         // API残量確認
         async checkVisits() {
           const data = await this.request("GET", "/v1/visits");
+          const modules = Array.isArray(data) ? data : [];
+          const available = modules.filter((m) => m.remain !== void 0);
+          const totalRemain = available.reduce((sum, m) => sum + (m.remain || 0), 0);
+          const summary = available.map((m) => `${m.module}:${m.remain}`).join(", ");
           return {
-            remaining: data.remaining,
-            total: data.total,
-            message: `\u6B8B\u308A ${data.remaining} / ${data.total} \u30EA\u30AF\u30A8\u30B9\u30C8`
+            modules,
+            message: summary || "\u5229\u7528\u53EF\u80FD\u30E2\u30B8\u30E5\u30FC\u30EB\u306A\u3057"
           };
         }
         // キーワード挖掘
         async keywordMiner(keyword) {
-          return this.request("GET", "/v1/keyword/miner", {
+          return this.request("POST", "/v1/keyword/miner", {
             keyword,
             marketplace: MARKETPLACE
           });
@@ -125,9 +128,9 @@
           });
         }
         // Googleトレンド
-        async googleTrends(asin) {
+        async googleTrends(keyword) {
           return this.request("GET", "/v1/google/trends", {
-            asin,
+            keyword,
             marketplace: MARKETPLACE
           });
         }
@@ -175,15 +178,28 @@
   var init_claude = __esm({
     "extension/api/claude.js"() {
       ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-      MODEL = "claude-sonnet-4-20250514";
+      MODEL = "claude-haiku-4-5-20251001";
       MAX_TOKENS = 3e3;
       TIMEOUT_MS2 = 6e4;
       ClaudeAPI = class {
         constructor(apiKey) {
           this.apiKey = apiKey;
         }
+        // APIキーがHTTPヘッダーとして使用可能か検証
+        _validateKey() {
+          if (!this.apiKey) {
+            throw new Error("API\u30AD\u30FC\u304C\u5165\u529B\u3055\u308C\u3066\u3044\u307E\u305B\u3093");
+          }
+          if (!/^[\x00-\xFF]+$/.test(this.apiKey)) {
+            throw new Error("API\u30AD\u30FC\u306B\u4F7F\u7528\u3067\u304D\u306A\u3044\u6587\u5B57\u304C\u542B\u307E\u308C\u3066\u3044\u307E\u3059\u3002\u30B3\u30D4\u30FC\u6642\u306B\u5168\u89D2\u6587\u5B57\u3084\u7279\u6B8A\u8A18\u53F7\u304C\u6DF7\u5165\u3057\u3066\u3044\u306A\u3044\u304B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
+          }
+          if (!this.apiKey.startsWith("sk-ant-")) {
+            throw new Error("API\u30AD\u30FC\u306E\u5F62\u5F0F\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093\u3002\u300Csk-ant-api03-...\u300D\u3067\u59CB\u307E\u308B\u30AD\u30FC\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044");
+          }
+        }
         // 疎通テスト
         async testConnection() {
+          this._validateKey();
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 1e4);
           try {
@@ -192,6 +208,7 @@
               headers: {
                 "x-api-key": this.apiKey,
                 "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
                 "content-type": "application/json"
               },
               body: JSON.stringify({
@@ -201,21 +218,47 @@
               }),
               signal: controller.signal
             });
+            const data = await response.json().catch(() => null);
+            const apiMessage = data?.error?.message || null;
+            const errorType = data?.error?.type || null;
             if (response.status === 401) {
-              throw new Error("API\u30AD\u30FC\u304C\u7121\u52B9\u3067\u3059");
+              const hint = this._authErrorHint(apiMessage);
+              throw new Error(`API\u30AD\u30FC\u304C\u8A8D\u8A3C\u3055\u308C\u307E\u305B\u3093\u3067\u3057\u305F\u3002${hint}`);
             }
-            if (!response.ok && response.status !== 400) {
-              throw new Error(`\u63A5\u7D9A\u30A8\u30E9\u30FC: ${response.status}`);
+            if (response.status === 403) {
+              throw new Error(`\u30A2\u30AF\u30BB\u30B9\u304C\u62D2\u5426\u3055\u308C\u307E\u3057\u305F\u3002${apiMessage || "\u3053\u306E\u30AD\u30FC\u306B\u306F\u5FC5\u8981\u306A\u6A29\u9650\u304C\u3042\u308A\u307E\u305B\u3093\u3002"}`);
+            }
+            if (response.status === 400) {
+              if (errorType === "invalid_request_error" && apiMessage?.includes("model")) {
+                return { success: true, message: "\u63A5\u7D9A\u6210\u529F\uFF08\u30E2\u30C7\u30EB\u540D\u8981\u78BA\u8A8D\uFF09" };
+              }
+              return { success: true, message: "\u63A5\u7D9A\u6210\u529F" };
+            }
+            if (!response.ok) {
+              throw new Error(`\u63A5\u7D9A\u30A8\u30E9\u30FC\uFF08HTTP ${response.status}\uFF09: ${apiMessage || "\u4E0D\u660E\u306A\u30A8\u30E9\u30FC"}`);
             }
             return { success: true, message: "\u63A5\u7D9A\u6210\u529F" };
           } catch (err) {
             if (err.name === "AbortError") {
-              throw new Error("\u30BF\u30A4\u30E0\u30A2\u30A6\u30C8\u3057\u307E\u3057\u305F");
+              throw new Error("\u30BF\u30A4\u30E0\u30A2\u30A6\u30C8\u3057\u307E\u3057\u305F\u3002\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u74B0\u5883\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
             }
             throw err;
           } finally {
             clearTimeout(timeoutId);
           }
+        }
+        // 401エラーの原因を推測してヒントを返す
+        _authErrorHint(apiMessage) {
+          if (!apiMessage) {
+            return "\u4EE5\u4E0B\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\uFF1A\n\u30FB\u300Csk-ant-api03-...\u300D\u3067\u59CB\u307E\u308B\u30AD\u30FC\u304B\n\u30FB\u30B3\u30D4\u30FC\u6642\u306B\u4F59\u5206\u306A\u30B9\u30DA\u30FC\u30B9\u304C\u542B\u307E\u308C\u3066\u3044\u306A\u3044\u304B\n\u30FBAnthropic Console\u3067\u767A\u884C\u6E08\u307F\u306E\u6709\u52B9\u306A\u30AD\u30FC\u304B";
+          }
+          if (apiMessage.includes("invalid x-api-key")) {
+            return "\u30AD\u30FC\u306E\u5024\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093\u3002Anthropic Console\uFF08console.anthropic.com\uFF09\u3067\u518D\u767A\u884C\u3057\u305F\u30AD\u30FC\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+          }
+          if (apiMessage.includes("disabled") || apiMessage.includes("deactivated")) {
+            return "\u3053\u306EAPI\u30AD\u30FC\u306F\u7121\u52B9\u5316\u3055\u308C\u3066\u3044\u307E\u3059\u3002Anthropic Console\u3067\u65B0\u3057\u3044\u30AD\u30FC\u3092\u767A\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+          }
+          return apiMessage;
         }
         // レビュー分析
         async analyzeReviews(asin, productTitle, reviews) {
@@ -223,20 +266,18 @@
           if (!positive.length && !negative.length) {
             throw new Error("\u5206\u6790\u3059\u308B\u30EC\u30D3\u30E5\u30FC\u304C\u3042\u308A\u307E\u305B\u3093");
           }
-          const positiveText = positive.map((r, i) => `[${i + 1}] \u2605${r.rating} ${r.title}
-${r.body}`).join("\n\n");
-          const negativeText = negative.map((r, i) => `[${i + 1}] \u2605${r.rating} ${r.title}
-${r.body}`).join("\n\n");
+          const positiveText = positive.map((r, i) => `[${i + 1}] \u2605${r.rating} ${r.title ? r.title + "\n" : ""}${r.body}`).join("\n\n");
+          const negativeText = negative.map((r, i) => `[${i + 1}] \u2605${r.rating} ${r.title ? r.title + "\n" : ""}${r.body}`).join("\n\n");
           const prompt = `\u3042\u306A\u305F\u306F\u4E16\u754C\u6700\u9AD8\u6C34\u6E96\u306E\u30DE\u30FC\u30B1\u30BF\u30FC\u306E\u601D\u8003\u3092\u6301\u3064Amazon OEM\u30EA\u30B5\u30FC\u30C1\u30A2\u30B7\u30B9\u30BF\u30F3\u30C8\u3067\u3059\u3002
 \u4EE5\u4E0B\u306E\u30EC\u30D3\u30E5\u30FC\u3092\u5206\u6790\u3057\u3001JSON\u5F62\u5F0F\u306E\u307F\u3067\u56DE\u7B54\u3057\u3066\u304F\u3060\u3055\u3044\u3002
 
 \u3010\u5546\u54C1\u540D\u3011${productTitle}
 \u3010ASIN\u3011${asin}
-\u3010\u9AD8\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\uFF084-5\u661F\uFF09\u3011
-${positiveText || "\uFF08\u9AD8\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\uFF09"}
+\u3010\u9AD8\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\uFF08\u26054\u4EE5\u4E0A\u30FB${positive.length}\u4EF6\uFF09\u3011
+${positiveText || "\uFF08\u306A\u3057\uFF09"}
 
-\u3010\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\uFF081-2\u661F\uFF09\u3011
-${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\uFF09"}
+\u3010\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\uFF08\u26052\u4EE5\u4E0B\u30FB${negative.length}\u4EF6\uFF09\u3011
+${negativeText || "\uFF08\u306A\u3057\uFF09"}
 
 \u4EE5\u4E0B\u306E4\u3064\u306E\u89B3\u70B9\u3067\u5206\u6790\u3057\u3066\u304F\u3060\u3055\u3044\u3002
 
@@ -248,12 +289,12 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
    - why: \u306A\u305C\u4ECA\u8CB7\u3063\u305F\u304B\uFF08\u8CFC\u8CB7\u30C8\u30EA\u30AC\u30FC \u4E0A\u4F4D3\u30D1\u30BF\u30FC\u30F3\u30FB\u5272\u5408\u4ED8\u304D\uFF09
    - how: \u3069\u3046\u3084\u3063\u3066\u77E5\u3063\u305F\u304B\uFF08\u6D41\u5165\u7D4C\u8DEF \u4E0A\u4F4D3\u30D1\u30BF\u30FC\u30F3\u30FB\u5272\u5408\u4ED8\u304D\uFF09
 
-2. pros\uFF08\u9AD8\u8A55\u4FA1\u30DD\u30A4\u30F3\u30C8\uFF09\u54045\u4EF6
+2. pros\uFF08\u672C\u6587\u306B\u898B\u3089\u308C\u308B\u9AD8\u8A55\u4FA1\u30DD\u30A4\u30F3\u30C8\u30FB\u79F0\u8CDB\u5185\u5BB9\uFF09\u54045\u4EF6
    - topic: \u30C8\u30D4\u30C3\u30AF\u540D
    - percent: \u8A00\u53CA\u5272\u5408\uFF08%\uFF09
    - review_quote: \u30EC\u30D3\u30E5\u30FC\u304B\u3089\u306E\u5F15\u7528\uFF0830\u6587\u5B57\u4EE5\u5185\uFF09
 
-3. cons\uFF08\u4F4E\u8A55\u4FA1\u30DD\u30A4\u30F3\u30C8\uFF09\u54045\u4EF6
+3. cons\uFF08\u672C\u6587\u306B\u898B\u3089\u308C\u308B\u4F4E\u8A55\u4FA1\u30DD\u30A4\u30F3\u30C8\u30FB\u4E0D\u6E80\u30FB\u6539\u5584\u8981\u671B\uFF09\u54045\u4EF6
    - topic: \u30C8\u30D4\u30C3\u30AF\u540D
    - percent: \u8A00\u53CA\u5272\u5408\uFF08%\uFF09
    - review_quote: \u30EC\u30D3\u30E5\u30FC\u304B\u3089\u306E\u5F15\u7528\uFF0830\u6587\u5B57\u4EE5\u5185\uFF09
@@ -263,7 +304,9 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
    - percent: \u8A00\u53CA\u5272\u5408\uFF08%\uFF09
    - review_quote: \u30EC\u30D3\u30E5\u30FC\u304B\u3089\u306E\u5F15\u7528\uFF0830\u6587\u5B57\u4EE5\u5185\uFF09
 
-\u5FC5\u305AJSON\u5F62\u5F0F\u306E\u307F\u3067\u56DE\u7B54\u3057\u3066\u304F\u3060\u3055\u3044\u3002\u8AAC\u660E\u6587\u306F\u4E0D\u8981\u3067\u3059\u3002`;
+\u4EE5\u4E0B\u306E\u5F62\u5F0F\u3067\u3001\u30E9\u30C3\u30D1\u30FC\u30AD\u30FC\u3092\u4ED8\u3051\u305A\u306B\u76F4\u63A5JSON\u5F62\u5F0F\u306E\u307F\u3067\u56DE\u7B54\u3057\u3066\u304F\u3060\u3055\u3044\u3002\u8AAC\u660E\u6587\u306F\u4E0D\u8981\u3067\u3059\u3002
+{"persona":{...},"pros":[...],"cons":[...],"usage_scenes":[...]}`;
+          this._validateKey();
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS2);
           try {
@@ -272,6 +315,7 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
               headers: {
                 "x-api-key": this.apiKey,
                 "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
                 "content-type": "application/json"
               },
               body: JSON.stringify({
@@ -281,17 +325,22 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
               }),
               signal: controller.signal
             });
+            const respData = await response.json().catch(() => null);
+            const respMessage = respData?.error?.message || null;
             if (response.status === 401) {
-              throw new Error("Anthropic API\u30AD\u30FC\u304C\u7121\u52B9\u3067\u3059\u3002\u8A2D\u5B9A\u753B\u9762\u3067\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044");
+              const hint = this._authErrorHint(respMessage);
+              throw new Error(`API\u30AD\u30FC\u8A8D\u8A3C\u30A8\u30E9\u30FC: ${hint}`);
+            }
+            if (response.status === 403) {
+              throw new Error(`\u30A2\u30AF\u30BB\u30B9\u62D2\u5426: ${respMessage || "\u8A2D\u5B9A\u753B\u9762\u3067API\u30AD\u30FC\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044"}`);
             }
             if (response.status === 429) {
-              throw new Error("\u5206\u6790\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002\u3057\u3070\u3089\u304F\u5F8C\u306B\u518D\u8A66\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF08\u30EC\u30FC\u30C8\u5236\u9650\uFF09");
+              throw new Error("\u30EC\u30FC\u30C8\u5236\u9650\u306B\u9054\u3057\u307E\u3057\u305F\u3002\u3057\u3070\u3089\u304F\u5F85\u3063\u3066\u304B\u3089\u518D\u8A66\u884C\u3057\u3066\u304F\u3060\u3055\u3044");
             }
             if (!response.ok) {
-              throw new Error(`\u5206\u6790\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08HTTP\u30A8\u30E9\u30FC: ${response.status}\uFF09`);
+              throw new Error(`\u5206\u6790\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08HTTP ${response.status}\uFF09: ${respMessage || "\u4E0D\u660E\u306A\u30A8\u30E9\u30FC"}`);
             }
-            const data = await response.json();
-            const content = data.content?.[0]?.text || "";
+            const content = respData?.content?.[0]?.text || "";
             const jsonText = content.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
             const parsed = JSON.parse(jsonText);
             return { success: true, result: parsed };
@@ -340,7 +389,7 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
           case "SEARCH_ANALYSIS":
             return handleSearchAnalysis(message.keyword);
           case "ASIN_ANALYSIS":
-            return handleAsinAnalysis(message.asin);
+            return handleAsinAnalysis(message.asin, message.keyword);
           case "REVIEW_ANALYSIS":
             return handleReviewAnalysis(message.asin, message.productTitle, message.reviews);
           case "TEST_SELLERSPRITE_KEY":
@@ -405,7 +454,7 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
         await setSessionCache(cacheKey, result);
         return result;
       }
-      async function handleAsinAnalysis(asin) {
+      async function handleAsinAnalysis(asin, keyword) {
         const settings = await getSettings();
         if (!settings.sellerSpriteKey) {
           throw new Error("SellerSprite API\u30AD\u30FC\u304C\u8A2D\u5B9A\u3055\u308C\u3066\u3044\u307E\u305B\u3093");
@@ -418,7 +467,7 @@ ${negativeText || "\uFF08\u4F4E\u8A55\u4FA1\u30EC\u30D3\u30E5\u30FC\u306A\u3057\
           api.asinDetail("JP", asin),
           api.salesPredictionAsin(asin),
           api.trafficKeyword(asin),
-          api.googleTrends(asin),
+          api.googleTrends(keyword || asin),
           api.salesPredictionBsr(asin)
         ]);
         const result = {

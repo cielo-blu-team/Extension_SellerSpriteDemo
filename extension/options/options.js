@@ -82,7 +82,8 @@ async function testSellerSpriteKey() {
     if (result.error) {
       showResult(resultEl, 'error', result.error);
     } else {
-      showResult(resultEl, 'success', `接続成功 — ${result.message}`);
+      await chrome.storage.local.set({ sellerSpriteKey: key });
+      showResult(resultEl, 'success', `接続成功・保存しました — ${result.message}`);
     }
   } catch (err) {
     showResult(resultEl, 'error', err.message || '接続エラー');
@@ -108,7 +109,8 @@ async function testAnthropicKey() {
     if (result.error) {
       showResult(resultEl, 'error', result.error);
     } else {
-      showResult(resultEl, 'success', '接続成功');
+      await chrome.storage.local.set({ anthropicKey: key });
+      showResult(resultEl, 'success', '接続成功・保存しました');
     }
   } catch (err) {
     showResult(resultEl, 'error', err.message || '接続エラー');

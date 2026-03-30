@@ -83,16 +83,20 @@ export class SellerSpriteAPI {
   // API残量確認
   async checkVisits() {
     const data = await this.request('GET', '/v1/visits');
+    // data は配列: [{ module, remain, message }, ...]
+    const modules = Array.isArray(data) ? data : [];
+    const available = modules.filter(m => m.remain !== undefined);
+    const totalRemain = available.reduce((sum, m) => sum + (m.remain || 0), 0);
+    const summary = available.map(m => `${m.module}:${m.remain}`).join(', ');
     return {
-      remaining: data.remaining,
-      total: data.total,
-      message: `残り ${data.remaining} / ${data.total} リクエスト`,
+      modules,
+      message: summary || '利用可能モジュールなし',
     };
   }
 
   // キーワード挖掘
   async keywordMiner(keyword) {
-    return this.request('GET', '/v1/keyword/miner', {
+    return this.request('POST', '/v1/keyword/miner', {
       keyword,
       marketplace: MARKETPLACE,
     });
@@ -142,9 +146,9 @@ export class SellerSpriteAPI {
   }
 
   // Googleトレンド
-  async googleTrends(asin) {
+  async googleTrends(keyword) {
     return this.request('GET', '/v1/google/trends', {
-      asin,
+      keyword,
       marketplace: MARKETPLACE,
     });
   }

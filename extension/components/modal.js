@@ -1,7 +1,9 @@
 /**
- * モーダルコンポーネント（5タブ）
- * 商品詳細ページのフローティングボタン押下後に表示
+ * スティッキーパネルコンポーネント（5タブ）
+ * 商品詳細ページ下部に固定表示
  */
+
+import { Chart } from 'chart.js/auto';
 
 export class Modal {
   constructor() {
@@ -10,69 +12,154 @@ export class Modal {
     this.data = null;
     this.asin = null;
     this.reviewHandler = null;
-    this._charts = {}; // Chart.jsインスタンス管理
+    this._charts = {};
+    this._expanded = false;
+    this._analyzeHandler = null;
   }
 
   render(asin) {
     this.asin = asin;
-    const modal = document.createElement('div');
-    modal.id = 'ec-lens-modal-overlay';
-    modal.innerHTML = `
+    const panel = document.createElement('div');
+    panel.id = 'ec-lens-panel';
+    panel.innerHTML = `
       <style>
-        #ec-lens-modal-overlay {
+        #ec-lens-panel {
           position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.55);
+          bottom: 0;
+          left: 0;
+          right: 0;
           z-index: 999999;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+          box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
         }
-        #ec-lens-modal {
-          background: #fff;
-          width: 760px;
-          max-width: 96vw;
-          max-height: 86vh;
-          border-radius: 8px;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        }
-        #ec-lens-modal-header {
+        #ec-lens-panel-header {
           background: #1A237E;
           color: #fff;
-          padding: 12px 16px;
+          padding: 8px 14px;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          flex-shrink: 0;
+          gap: 10px;
+          user-select: none;
         }
-        #ec-lens-modal-header .ec-lens-asin {
-          font-size: 12px;
+        #ec-lens-panel-brand {
+          font-size: 15px;
+          font-weight: 700;
           color: #90CAF9;
-          margin-right: 8px;
+          white-space: nowrap;
+          cursor: pointer;
         }
-        #ec-lens-modal-header .ec-lens-title {
+        #ec-lens-panel-divider {
+          width: 1px;
+          height: 14px;
+          background: rgba(255,255,255,0.3);
+        }
+        #ec-lens-panel-asin {
           font-size: 13px;
           font-weight: 600;
+          color: #90CAF9;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(144,202,249,0.3);
+          border-radius: 4px;
+          padding: 2px 6px;
+          white-space: nowrap;
+          letter-spacing: 0.5px;
+        }
+        #ec-lens-copy-asin {
+          background: none;
+          border: 1px solid rgba(144,202,249,0.4);
+          border-radius: 3px;
+          color: rgba(255,255,255,0.7);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 2px 6px;
+          white-space: nowrap;
+          transition: background 0.15s;
+        }
+        #ec-lens-copy-asin:hover {
+          background: rgba(255,255,255,0.15);
+          color: #fff;
+        }
+        #ec-lens-panel-title {
+          font-size: 14px;
+          font-weight: 500;
           flex: 1;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          color: rgba(255,255,255,0.8);
+          cursor: pointer;
+          min-width: 0;
         }
-        #ec-lens-modal-close {
+        #ec-lens-analyze-btn {
+          background: #1560BD;
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+          padding: 5px 12px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          font-family: inherit;
+          flex-shrink: 0;
+          transition: background 0.15s;
+        }
+        #ec-lens-analyze-btn:hover:not(:disabled) { background: #1976D2; }
+        #ec-lens-analyze-btn:disabled {
+          background: rgba(255,255,255,0.15);
+          cursor: default;
+        }
+        .ec-lens-hdr-btn {
           background: transparent;
           border: none;
-          color: rgba(255,255,255,0.7);
-          font-size: 20px;
+          color: rgba(255,255,255,0.65);
+          font-size: 17px;
           cursor: pointer;
-          padding: 0 4px;
+          padding: 2px 6px;
           line-height: 1;
+          flex-shrink: 0;
         }
-        #ec-lens-modal-close:hover { color: #fff; }
-        #ec-lens-modal-tabs {
+        .ec-lens-hdr-btn:hover { color: #fff; }
+        .ec-lens-spinner-sm {
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: ec-lens-spin-sm 0.6s linear infinite;
+          vertical-align: middle;
+          margin-right: 4px;
+        }
+        @keyframes ec-lens-spin-sm { to { transform: rotate(360deg); } }
+        #ec-lens-resize-handle {
+          height: 6px;
+          background: #E8EAF6;
+          cursor: ns-resize;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          user-select: none;
+        }
+        #ec-lens-resize-handle:hover { background: #C5CAE9; }
+        #ec-lens-resize-handle::after {
+          content: '';
+          width: 32px;
+          height: 2px;
+          background: #9FA8DA;
+          border-radius: 1px;
+        }
+        #ec-lens-panel-body-wrap {
+          background: #fff;
+          display: none;
+          flex-direction: column;
+          height: 50vh;
+        }
+        #ec-lens-panel-body-wrap.open {
+          display: flex;
+        }
+        #ec-lens-panel-tabs {
           display: flex;
           border-bottom: 2px solid #E0E0E0;
           background: #F5F5F5;
@@ -80,8 +167,8 @@ export class Modal {
           overflow-x: auto;
         }
         .ec-lens-tab-btn {
-          padding: 10px 14px;
-          font-size: 12px;
+          padding: 9px 14px;
+          font-size: 14px;
           font-weight: 500;
           border: none;
           background: transparent;
@@ -91,6 +178,7 @@ export class Modal {
           border-bottom: 3px solid transparent;
           margin-bottom: -2px;
           transition: color 0.15s;
+          font-family: inherit;
         }
         .ec-lens-tab-btn.active {
           color: #1560BD;
@@ -98,11 +186,11 @@ export class Modal {
           font-weight: 700;
         }
         .ec-lens-tab-btn:hover:not(.active) { color: #1560BD; }
-        #ec-lens-modal-body {
+        #ec-lens-panel-body {
           overflow-y: auto;
           flex: 1;
-          padding: 16px;
-          font-size: 12px;
+          padding: 14px 16px;
+          font-size: 14px;
           color: #333;
           line-height: 1.6;
         }
@@ -110,7 +198,8 @@ export class Modal {
         .ec-lens-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12px;
+          table-layout: fixed;
+          font-size: 14px;
         }
         .ec-lens-table th {
           background: #1A237E;
@@ -118,7 +207,7 @@ export class Modal {
           padding: 7px 10px;
           text-align: left;
           font-weight: 600;
-          font-size: 11px;
+          font-size: 13px;
         }
         .ec-lens-table td {
           padding: 6px 10px;
@@ -139,12 +228,12 @@ export class Modal {
           padding: 10px 12px;
         }
         .ec-lens-overview-card .label {
-          font-size: 10px;
+          font-size: 12px;
           color: #777;
           margin-bottom: 2px;
         }
         .ec-lens-overview-card .value {
-          font-size: 17px;
+          font-size: 19px;
           font-weight: 700;
           color: #1A237E;
         }
@@ -159,7 +248,7 @@ export class Modal {
         .ec-lens-pill {
           padding: 3px 10px;
           border-radius: 20px;
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 600;
         }
         .ec-lens-pill.good { background: #E8F5E9; color: #2E7D32; }
@@ -202,12 +291,12 @@ export class Modal {
           background: #1A237E;
           color: #fff;
           padding: 5px 10px;
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 700;
         }
         .ec-lens-5w1h-card .card-body {
           padding: 8px 10px;
-          font-size: 11px;
+          font-size: 13px;
         }
         .ec-lens-5w1h-card .card-body li {
           padding: 2px 0;
@@ -236,12 +325,12 @@ export class Modal {
           border-radius: 6px;
           padding: 12px;
           margin: 8px 0;
-          font-size: 12px;
+          font-size: 14px;
         }
         /* チャートエリア */
         .ec-lens-chart-wrap {
           position: relative;
-          height: 220px;
+          height: 180px;
           margin-bottom: 14px;
           background: #FAFAFA;
           border: 1px solid #E0E0E0;
@@ -249,59 +338,146 @@ export class Modal {
           padding: 10px;
         }
         .ec-lens-chart-title {
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 700;
           color: #444;
           margin-bottom: 6px;
         }
       </style>
-      <div id="ec-lens-modal">
-        <div id="ec-lens-modal-header">
-          <span class="ec-lens-asin">${asin}</span>
-          <span class="ec-lens-title" id="ec-lens-modal-title">データ取得中...</span>
-          <button id="ec-lens-modal-close">×</button>
-        </div>
-        <div id="ec-lens-modal-tabs">
+      <div id="ec-lens-panel-header">
+        <span id="ec-lens-panel-brand">EC Lens</span>
+        <div id="ec-lens-panel-divider"></div>
+        <span id="ec-lens-panel-asin">${asin}</span>
+        <button id="ec-lens-copy-asin" title="ASINをコピー">コピー</button>
+        <span id="ec-lens-panel-title" id="ec-lens-panel-toggle-area">商品を分析できます</span>
+        <button id="ec-lens-analyze-btn">分析する ▶</button>
+        <button class="ec-lens-hdr-btn" id="ec-lens-panel-toggle" title="開閉">▲</button>
+        <button class="ec-lens-hdr-btn" id="ec-lens-panel-close" title="閉じる">×</button>
+      </div>
+      <div id="ec-lens-panel-body-wrap">
+        <div id="ec-lens-resize-handle"></div>
+        <div id="ec-lens-panel-tabs">
           <button class="ec-lens-tab-btn active" data-tab="overview">商品概要</button>
           <button class="ec-lens-tab-btn" data-tab="sales">売上推移</button>
           <button class="ec-lens-tab-btn" data-tab="keywords">流入KW</button>
           <button class="ec-lens-tab-btn" data-tab="trends">市場トレンド</button>
           <button class="ec-lens-tab-btn" data-tab="reviews">AIレビュー</button>
         </div>
-        <div id="ec-lens-modal-body">
-          ${this._renderLoading()}
-        </div>
+        <div id="ec-lens-panel-body"></div>
       </div>
     `;
 
-    this.el = modal;
+    this.el = panel;
     this._bindEvents();
-    return modal;
+    return panel;
   }
 
   _bindEvents() {
     // 閉じるボタン
-    this.el.querySelector('#ec-lens-modal-close').addEventListener('click', () => this.close());
+    this.el.querySelector('#ec-lens-panel-close').addEventListener('click', () => this.close());
 
-    // オーバーレイクリックで閉じる
-    this.el.addEventListener('click', (e) => {
-      if (e.target === this.el) this.close();
+    // 折りたたみトグル（ブランド名・タイトル・トグルボタン）
+    const toggle = () => this._toggleExpand();
+    this.el.querySelector('#ec-lens-panel-toggle').addEventListener('click', toggle);
+    this.el.querySelector('#ec-lens-panel-brand').addEventListener('click', toggle);
+    this.el.querySelector('#ec-lens-panel-title').addEventListener('click', toggle);
+
+    // ASINコピーボタン
+    this.el.querySelector('#ec-lens-copy-asin').addEventListener('click', () => {
+      navigator.clipboard.writeText(this.asin).then(() => {
+        const btn = this.el.querySelector('#ec-lens-copy-asin');
+        btn.textContent = 'コピー済';
+        setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+      }).catch(() => {});
+    });
+
+    // 分析ボタン
+    this.el.querySelector('#ec-lens-analyze-btn').addEventListener('click', () => {
+      if (this._analyzeHandler) this._analyzeHandler();
     });
 
     // タブ切り替え
     this.el.querySelectorAll('.ec-lens-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab;
-        this._switchTab(tab);
-      });
+      btn.addEventListener('click', () => this._switchTab(btn.dataset.tab));
+    });
+
+    // リサイズハンドル（上端ドラッグで高さ調整）
+    const handle = this.el.querySelector('#ec-lens-resize-handle');
+    const bodyWrap = this.el.querySelector('#ec-lens-panel-body-wrap');
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startH = bodyWrap.offsetHeight;
+      const MIN_H = 150;
+      const MAX_H = Math.round(window.innerHeight * 0.8);
+
+      const onMove = (mv) => {
+        const delta = startY - mv.clientY;
+        const newH = Math.min(MAX_H, Math.max(MIN_H, startH + delta));
+        bodyWrap.style.height = `${newH}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+        // ドラッグ後の高さを保存
+        localStorage.setItem('ec-lens-panel-height', bodyWrap.offsetHeight);
+      };
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     });
   }
 
+  _toggleExpand() {
+    this._expanded = !this._expanded;
+    const wrap = this.el.querySelector('#ec-lens-panel-body-wrap');
+    const toggleBtn = this.el.querySelector('#ec-lens-panel-toggle');
+    wrap.classList.toggle('open', this._expanded);
+    toggleBtn.textContent = this._expanded ? '▼' : '▲';
+    if (this._expanded && this.data) {
+      this._renderTabContent();
+    }
+  }
+
+  _expand() {
+    if (!this._expanded) {
+      this._expanded = true;
+      const wrap = this.el.querySelector('#ec-lens-panel-body-wrap');
+      wrap.classList.add('open');
+      // 保存済み高さがあれば復元、なければ50vh
+      const saved = localStorage.getItem('ec-lens-panel-height');
+      if (saved) {
+        wrap.style.height = `${saved}px`;
+      } else {
+        wrap.style.height = `${Math.round(window.innerHeight * 0.5)}px`;
+      }
+      this.el.querySelector('#ec-lens-panel-toggle').textContent = '▼';
+    }
+  }
+
+  onAnalyzeClick(handler) {
+    this._analyzeHandler = handler;
+  }
+
+  setLoading() {
+    const btn = this.el.querySelector('#ec-lens-analyze-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ec-lens-spinner-sm"></span>取得中...';
+    this._expand();
+    const body = this.el.querySelector('#ec-lens-panel-body');
+    body.innerHTML = this._renderLoading();
+  }
+
+  setReady() {
+    const btn = this.el.querySelector('#ec-lens-analyze-btn');
+    btn.disabled = false;
+    btn.textContent = '再取得 ▶';
+  }
+
   _switchTab(tab) {
-    // 既存チャートを破棄
     Object.values(this._charts).forEach(c => { try { c.destroy(); } catch (_) {} });
     this._charts = {};
-
     this.activeTab = tab;
     this.el.querySelectorAll('.ec-lens-tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -312,14 +488,16 @@ export class Modal {
   setData(data, productTitle) {
     this.data = data;
     if (productTitle) {
-      this.el.querySelector('#ec-lens-modal-title').textContent = productTitle;
+      this.el.querySelector('#ec-lens-panel-title').textContent = productTitle;
     }
+    this._expand();
     this._renderTabContent();
   }
 
   _renderTabContent() {
-    const body = this.el.querySelector('#ec-lens-modal-body');
-    if (!this.data) {
+    const body = this.el.querySelector('#ec-lens-panel-body');
+    if (!body) return;
+    if (!this.data && this.activeTab !== 'reviews') {
       body.innerHTML = this._renderLoading();
       return;
     }
@@ -351,10 +529,10 @@ export class Modal {
       <div style="padding:12px 0">
         <div class="ec-lens-skeleton" style="height:20px;width:60%;margin-bottom:12px"></div>
         <div class="ec-lens-overview-grid">
-          ${Array(6).fill('<div class="ec-lens-skeleton" style="height:70px"></div>').join('')}
+          ${Array(6).fill('<div class="ec-lens-skeleton" style="height:60px"></div>').join('')}
         </div>
         <div class="ec-lens-skeleton" style="height:14px;width:40%;margin-bottom:8px"></div>
-        <div class="ec-lens-skeleton" style="height:120px"></div>
+        <div class="ec-lens-skeleton" style="height:80px"></div>
       </div>
     `;
   }
@@ -424,11 +602,7 @@ export class Modal {
       <div class="ec-lens-chart-wrap">
         <canvas id="ec-lens-chart-monthly"></canvas>
       </div>
-      <div class="ec-lens-chart-title" style="margin-top:8px">日別販売数（直近30日）</div>
-      <div class="ec-lens-chart-wrap">
-        <canvas id="ec-lens-chart-daily"></canvas>
-      </div>
-      <table class="ec-lens-table" style="margin-top:12px">
+      <table class="ec-lens-table" style="margin-top:10px">
         <thead><tr><th>月</th><th>販売数</th><th>売上</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="3" style="text-align:center;color:#999">データなし</td></tr>'}</tbody>
       </table>
@@ -436,18 +610,13 @@ export class Modal {
   }
 
   _drawSalesCharts() {
-    if (!window.Chart) {
-      this._loadChartJs(() => this._drawSalesCharts());
-      return;
-    }
     const sp = this.data.salesPrediction;
     if (!sp) return;
 
-    // 月別グラフ
     const monthly = (sp.monthItemList || []).slice(-6);
     const monthCanvas = this.el.querySelector('#ec-lens-chart-monthly');
     if (monthCanvas && monthly.length) {
-      this._charts.monthly = new window.Chart(monthCanvas, {
+      this._charts.monthly = new Chart(monthCanvas, {
         type: 'bar',
         data: {
           labels: monthly.map(i => i.date || ''),
@@ -474,30 +643,6 @@ export class Modal {
           ],
         },
         options: chartOptions('月', '販売数', '売上'),
-      });
-    }
-
-    // 日別グラフ
-    const daily = (sp.dailyItemList || []).slice(-30);
-    const dailyCanvas = this.el.querySelector('#ec-lens-chart-daily');
-    if (dailyCanvas && daily.length) {
-      this._charts.daily = new window.Chart(dailyCanvas, {
-        type: 'line',
-        data: {
-          labels: daily.map(i => i.date || ''),
-          datasets: [
-            {
-              label: '日別販売数（個）',
-              data: daily.map(i => i.sales || 0),
-              borderColor: '#1560BD',
-              backgroundColor: 'rgba(21, 96, 189, 0.08)',
-              fill: true,
-              tension: 0.3,
-              pointRadius: 2,
-            },
-          ],
-        },
-        options: chartOptions('日', '販売数', null),
       });
     }
   }
@@ -551,23 +696,20 @@ export class Modal {
     return `
       ${bsrValue != null ? `
         <div style="margin-bottom:12px;padding:10px 14px;background:#F5F7FF;border-radius:6px;border:1px solid #E0E0E0">
-          <span style="font-size:11px;color:#777">BSR推定月間販売数</span>
-          <span style="font-size:17px;font-weight:700;color:#1A237E;margin-left:10px">${Number(bsrValue).toLocaleString()}個</span>
+          <span style="font-size:13px;color:#777">BSR推定月間販売数</span>
+          <span style="font-size:19px;font-weight:700;color:#1A237E;margin-left:10px">${Number(bsrValue).toLocaleString()}個</span>
         </div>
       ` : ''}
       <div class="ec-lens-chart-title">Googleトレンド（直近12ヶ月）</div>
       <div class="ec-lens-chart-wrap">
         <canvas id="ec-lens-chart-trends"></canvas>
       </div>
-      ${(!trends && !this.data.googleTrendsError) ? '<p style="font-size:11px;color:#999;text-align:center">Googleトレンドデータがありません</p>' : ''}
+      ${(!trends && !this.data.googleTrendsError) ? '<p style="font-size:13px;color:#999;text-align:center">Googleトレンドデータがありません</p>' : ''}
+      ${(trends && !trends.items?.length) ? '<p style="font-size:13px;color:#999;text-align:center">このキーワードのトレンドデータは見つかりませんでした</p>' : ''}
     `;
   }
 
   _drawTrendsChart() {
-    if (!window.Chart) {
-      this._loadChartJs(() => this._drawTrendsChart());
-      return;
-    }
     const trends = this.data.googleTrends;
     if (!trends?.items?.length) return;
 
@@ -575,10 +717,15 @@ export class Modal {
     const canvas = this.el.querySelector('#ec-lens-chart-trends');
     if (!canvas) return;
 
-    this._charts.trends = new window.Chart(canvas, {
+    this._charts.trends = new Chart(canvas, {
       type: 'line',
       data: {
-        labels: items.map(i => i.date || i.month || ''),
+        labels: items.map(i => {
+          if (i.date) return i.date;
+          if (i.month) return i.month;
+          if (i.time) return new Date(i.time).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short' });
+          return '';
+        }),
         datasets: [
           {
             label: '検索トレンド',
@@ -595,29 +742,15 @@ export class Modal {
     });
   }
 
-  _loadChartJs(callback) {
-    if (document.getElementById('ec-lens-chartjs')) {
-      // スクリプトはあるがwindow.Chartがまだない→少し待つ
-      setTimeout(() => { if (window.Chart) callback(); }, 200);
-      return;
-    }
-    const script = document.createElement('script');
-    script.id = 'ec-lens-chartjs';
-    script.src = chrome.runtime.getURL('assets/chart.umd.js');
-    script.onload = callback;
-    document.head.appendChild(script);
-  }
-
   _renderReviews() {
     return `
       <div id="ec-lens-review-initial">
         <p style="color:#555;margin-bottom:12px;line-height:1.7">
-          現在表示中のAmazon商品ページからレビューを取得し、Claude AIで分析します。<br>
-          高評価（4〜5星）15件 + 低評価（1〜2星）15件を自動収集します。
+          現在表示中のAmazon商品ページからレビューを取得し、Claude AIで分析します。
         </p>
         <button id="ec-lens-review-btn" style="
           background:#1560BD;color:#fff;border:none;border-radius:4px;
-          padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
+          padding:10px 20px;font-size:15px;font-weight:600;cursor:pointer;
           font-family:inherit;
         ">AIでレビューを分析する（Claude）</button>
         <div id="ec-lens-review-result"></div>
@@ -648,17 +781,23 @@ export class Modal {
     return `
       <div style="margin-top:16px">
         <div class="ec-lens-5w1h-grid">
-          ${Array(6).fill('<div class="ec-lens-skeleton" style="height:100px"></div>').join('')}
+          ${Array(6).fill('<div class="ec-lens-skeleton" style="height:80px"></div>').join('')}
         </div>
-        <div class="ec-lens-skeleton" style="height:140px;margin-bottom:10px"></div>
-        <div class="ec-lens-skeleton" style="height:140px;margin-bottom:10px"></div>
-        <div class="ec-lens-skeleton" style="height:140px"></div>
+        <div class="ec-lens-skeleton" style="height:100px;margin-bottom:10px"></div>
+        <div class="ec-lens-skeleton" style="height:100px;margin-bottom:10px"></div>
+        <div class="ec-lens-skeleton" style="height:100px"></div>
       </div>
     `;
   }
 
   renderReviewResult(result, el) {
-    const { persona, pros, cons, usage_scenes } = result;
+    // Claudeがラッパーキーを付けて返すケースに対応（persona/pros直下にない場合、一段掘り下げる）
+    let data = result;
+    if (data && !data.persona && !data.pros) {
+      const nested = Object.values(data).find(v => v && typeof v === 'object' && (v.persona || v.pros));
+      if (nested) data = nested;
+    }
+    const { persona, pros, cons, usage_scenes } = data;
     const targetEl = el || this.el.querySelector('#ec-lens-review-result');
     if (!targetEl) return;
 
@@ -672,7 +811,7 @@ export class Modal {
     };
 
     const personaHTML = persona ? `
-      <h4 style="font-size:12px;font-weight:700;color:#1A237E;margin:16px 0 8px">購買ペルソナ（5W1H）</h4>
+      <h4 style="font-size:14px;font-weight:700;color:#1A237E;margin:16px 0 8px">購買ペルソナ（5W1H）</h4>
       <div class="ec-lens-5w1h-grid">
         ${Object.entries(w1hLabels).map(([key, label]) => {
           const items = persona[key] || [];
@@ -682,7 +821,7 @@ export class Modal {
               <ul class="card-body">
                 ${items.slice(0, 3).map(item => `
                   <li>
-                    <span>${typeof item === 'string' ? item : item.label || item.text || ''}</span>
+                    <span>${typeof item === 'string' ? item : item.label || item.text || item.attribute || item.timing || item.location || item.purpose || item.trigger || item.channel || ''}</span>
                     ${item.percent != null ? `<span style="color:#1560BD;font-weight:600">${item.percent}%</span>` : ''}
                   </li>
                 `).join('')}
@@ -696,22 +835,22 @@ export class Modal {
     const tableHTML = (title, items, color) => {
       if (!items || !items.length) return '';
       return `
-        <h4 style="font-size:12px;font-weight:700;color:#1A237E;margin:16px 0 8px">${title}</h4>
-        <table class="ec-lens-table" style="margin-bottom:12px">
-          <thead><tr><th>トピック</th><th style="width:140px">言及割合</th><th>引用</th></tr></thead>
+        <h4 style="font-size:14px;font-weight:700;color:#1A237E;margin:20px 0 14px">${title}</h4>
+        <table class="ec-lens-table" style="margin-bottom:16px">
+          <thead><tr><th style="width:28%">トピック</th><th style="width:38%">言及割合</th><th style="width:34%">引用</th></tr></thead>
           <tbody>
             ${items.slice(0, 5).map(item => `
               <tr>
-                <td>${item.topic || ''}</td>
+                <td>${item.topic || item.scene || ''}</td>
                 <td>
                   <div class="ec-lens-percent-bar">
                     <div class="bar-track">
                       <div class="bar-fill ${color}" style="width:${Math.min(item.percent || 0, 100)}%"></div>
                     </div>
-                    <span style="font-size:11px;color:#555;white-space:nowrap">${item.percent || 0}%</span>
+                    <span style="font-size:13px;color:#555;white-space:nowrap">${item.percent || 0}%</span>
                   </div>
                 </td>
-                <td style="color:#666;font-size:11px">${item.review_quote || ''}</td>
+                <td style="color:#666;font-size:13px;word-break:break-all">${item.review_quote || ''}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -731,7 +870,6 @@ export class Modal {
 
   onReviewAnalysis(handler) {
     this.reviewHandler = handler;
-    // タブが既にreviewsなら再バインド
     if (this.activeTab === 'reviews') {
       this._bindReviewBtn();
     }
@@ -747,7 +885,6 @@ export class Modal {
 // ユーティリティ
 function formatRevenue(amount) {
   if (!amount) return '---';
-  if (amount >= 10000) return `¥${Math.round(amount / 10000)}万`;
   return `¥${Number(amount).toLocaleString()}`;
 }
 

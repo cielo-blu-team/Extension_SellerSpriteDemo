@@ -156,10 +156,11 @@
           this.state = "loaded";
           const metricsData = {};
           if (keywordData) {
-            metricsData.searches = keywordData.searches;
-            metricsData.purchaseRate = keywordData.purchaseRate;
-            metricsData.supplyDemandRatio = keywordData.supplyDemandRatio;
-            metricsData.bid = keywordData.bid;
+            const kw = keywordData.items?.[0] ?? keywordData;
+            metricsData.searches = kw.searches;
+            metricsData.purchaseRate = kw.purchaseRate;
+            metricsData.supplyDemandRatio = kw.supplyDemandRatio;
+            metricsData.bid = kw.bid ?? kw.bidMin;
           }
           if (productData && productData.items && productData.items.length > 0) {
             const items = productData.items;
